@@ -1,0 +1,10 @@
+# Used only with Podman (SteamOS / Steam Deck); launcher/runtime/podman-shim/docker adds it after compose.yaml.
+# Rootless Podman may not be allowed to set CPU limits, so they are left out here (0 = no limit).
+# Memory and process limits stay as in compose.yaml.
+services:
+  sql:
+    cpus: 0
+  api:
+    cpus: 0
+  game:
+    cpus: 0

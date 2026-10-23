@@ -1,0 +1,7 @@
+# Only these folders are needed to build the images. Keeping everything else out matters for Podman,
+# which sends the whole folder (game client, server pack...) to the builder otherwise.
+*
+!docker/
+!sources/RustyHearts-API-master/
+sources/RustyHearts-API-master/node_modules
+docker/.env

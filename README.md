@@ -29,9 +29,26 @@ yourself from the RaGEZONE community release. The launcher finds those downloads
 
 - Linux x86-64 (tested on Bazzite). **16 GB RAM** or more.
 - **Docker Engine with the Compose plugin**, usable by your user. On Bazzite, the developer edition
-  (bazzite-dx) includes Docker.
+  (bazzite-dx) includes Docker. **Steam Deck / SteamOS:** nothing to install, Podman is used instead
+  (see below).
 - **Steam with Proton Experimental** (or GE-Proton).
 - About **60 GB free disk space** while installing, about 20 GB afterwards.
+
+## Steam Deck
+
+Everything (server and game) can run on the Deck itself. SteamOS has no Docker, but it has Podman built in
+(SteamOS 3.5 and later); RH Launcher uses that automatically.
+
+- Use **Desktop Mode** for the first install: unpack the zip, then in Konsole run
+  `bash RH-launcher/launcher/RHLauncher.sh` and press **Install everything** on the Setup tab. Setup turns
+  on Podman's service and downloads Docker Compose by itself.
+- You need about **60 GB free** while installing. A 64 GB Deck isn't enough; use a 256/512 GB model, or an
+  SD card formatted by SteamOS (ext4, not exFAT).
+- Then **Settings → Add to Steam**, switch to Gaming Mode and play with the controller.
+- Memory is tight: 16 GB is shared by SteamOS, the database, the Wine game servers and the game. Close
+  other apps; the launcher stops everything if less than 2 GB is left.
+
+The Steam Deck / Podman mode is new and not tested on a real Deck yet. Please report how it goes.
 
 ## Install
 

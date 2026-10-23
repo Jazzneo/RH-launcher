@@ -37,6 +37,18 @@ DX_CAB = "Jun2010_D3DCompiler_43_x86.cab"
 D3DCOMPILER_SHA256 = "2f23182ec6f4889397ac4bf03d62536136c5bdba825c7d2c4ef08c827f3a8a1c"
 ARCHIVE_EXT = (".7z", ".zip", ".rar", ".vhdx")
 GIB = 1 << 30
+# SteamOS / Steam Deck: no Docker, Podman instead (RHLauncher.sh sets RH_PODMAN=1 and puts a "docker"
+# stand-in on PATH). Setup turns on Podman's Docker-compatible socket and downloads Docker Compose.
+PODMAN = os.environ.get("RH_PODMAN") == "1"
+COMPOSE_VERSION = "2.32.4"
+COMPOSE_URL = (f"https://github.com/docker/compose/releases/download/v{COMPOSE_VERSION}/"
+               "docker-compose-linux-x86_64")
+COMPOSE_SHA256 = "ed1917fb54db184192ea9d0717bcd59e3662ea79db48bff36d3475516c480a6b"
+COMPOSE_BIN = os.path.join(ROOT, "runtime", "podman", "docker-compose")
+
+
+def podman_socket():
+    return os.path.join(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "podman", "podman.sock")
 
 
 class Cancelled(Exception):
@@ -222,7 +234,19 @@ def patched_ok():
 
 
 def docker_state():
-    """('ok' | 'missing' | 'denied' | 'stopped', detail)."""
+    """('ok' | 'podman-setup' | 'missing' | 'denied' | 'stopped', detail)."""
+    if PODMAN:
+        try:
+            r = subprocess.run(["podman", "version", "--format", "{{.Client.Version}}"], capture_output=True,
+                               text=True, timeout=30)
+        except Exception as e:
+            return "stopped", f"Podman doesn't work: {e}"
+        if r.returncode:
+            return "stopped", "Podman doesn't work: " + ((r.stderr or "").strip().splitlines() or ["?"])[-1][:120]
+        ver = r.stdout.strip()
+        if not os.access(COMPOSE_BIN, os.X_OK) or not os.path.exists(podman_socket()):
+            return "podman-setup", f"Podman {ver} found; Install finishes the setup"
+        return "ok", f"Podman {ver}, Compose {COMPOSE_VERSION}"
     try:
         cmd = backend._docker()
     except RuntimeError:
@@ -507,6 +531,55 @@ class Installer:
         if not patched_ok():
             raise RuntimeError("The Wine fix could not be applied (see the log).")
 
+    def engine(self):
+        """Podman only (Steam Deck): turn on Podman's Docker-compatible socket and get Docker Compose."""
+        if not PODMAN:
+            self.log("Docker is used directly")
+            return
+        import hashlib
+        import time
+        import urllib.request
+        self.say("Turning on Podman's Docker-compatible service…")
+        self._run(["systemctl", "--user", "enable", "--now", "podman.socket"])
+        for _ in range(20):
+            if os.path.exists(podman_socket()):
+                break
+            time.sleep(0.5)
+        if not os.path.exists(podman_socket()):
+            raise RuntimeError("Podman's service socket didn't appear (systemctl --user status podman.socket).")
+        if os.access(COMPOSE_BIN, os.X_OK):
+            self.log(f"Docker Compose {COMPOSE_VERSION}: already downloaded")
+            return
+        self.say(f"Downloading Docker Compose {COMPOSE_VERSION} from GitHub (65 MB)…")
+        os.makedirs(os.path.dirname(COMPOSE_BIN), exist_ok=True)
+        part = COMPOSE_BIN + ".part"
+        h = hashlib.sha256()
+        try:
+            with urllib.request.urlopen(COMPOSE_URL, timeout=60) as r, open(part, "wb") as f:
+                total, got = int(r.headers.get("Content-Length") or 0), 0
+                while True:
+                    if self.cancelled:
+                        raise Cancelled()
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    h.update(chunk)
+                    got += len(chunk)
+                    self.fraction = got / total if total else None
+        except Cancelled:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"Couldn't download Docker Compose ({e}). Check the internet connection.")
+        finally:
+            self.fraction = None
+        if h.hexdigest() != COMPOSE_SHA256:
+            os.remove(part)
+            raise RuntimeError("The Docker Compose download didn't match its published checksum; not using it.")
+        os.chmod(part, 0o755)
+        os.replace(part, COMPOSE_BIN)
+        self.log(f"Docker Compose {COMPOSE_VERSION} installed")
+
     def images(self):
         if images_ok():
             self.log("Docker images: already built")
@@ -515,13 +588,16 @@ class Installer:
         if st != "ok":
             raise RuntimeError(detail + ". See the Setup page.")
         dk = backend._docker()
-        self.say("Downloading SQL Server for Linux (about 1.5 GB)…")
+        if PODMAN:
+            self.say("Downloading SQL Server for Linux and building the servers with Podman (15-30 minutes)…")
+        else:
+            self.say("Downloading SQL Server for Linux (about 1.5 GB)…")
         self._run(dk + COMPOSE + ["pull", "sql"])
         self.say("Building the login server and the Wine game server (5-15 minutes)…")
         self._run(dk + COMPOSE + ["build", "--progress", "plain"])
 
     STEPS = [("server_files", "Server files"), ("drivers", "Database drivers"), ("client", "Game client"),
-             ("configure", "Server settings"), ("patch", "Wine fix"), ("images", "Docker images")]
+             ("configure", "Server settings"), ("patch", "Wine fix"), ("engine", "Container engine"), ("images", "Docker images")]
 
     def run_all(self, only=None):
         for i, (fn, label) in enumerate(self.STEPS):

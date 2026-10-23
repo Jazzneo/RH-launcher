@@ -15,7 +15,13 @@ ready = {'sql', 'api', 'game'} <= running and subprocess.run(
     compose + ['exec', '-T', 'game', 'test', '-f', '/tmp/rh-ready'],
     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=15,
 ).returncode == 0
-required = 10 if ready else 16
+total = int(mem['MemTotal'].split()[0]) / 1024 / 1024
+if total < 20:
+    # 16 GB machines (Steam Deck): every container still has its hard cap and the launcher's 2 GiB
+    # watchdog stops everything if memory runs out, so start with less free memory.
+    required = 3 if ready else 6
+else:
+    required = 10 if ready else 16
 if available < required:
     raise SystemExit(f'Refusing startup: {available:.1f} GiB RAM available; at least {required} GiB must be available. Close memory-heavy apps first.')
 owned_ports = set()

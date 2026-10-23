@@ -668,10 +668,10 @@ class SetupScreen(Screen):
                        "\n\nDownload them (button 'Get the game files'), then press 'Look again'. If you already "
                        "have the game client somewhere, set it on the Game Client tab instead.")
             return
-        if st["docker"] != "ok":
+        if st["docker"] not in ("ok", "podman-setup"):
             self.docker_help()
             return
-        if st["mem"] and st["mem"] < 15:
+        if st["mem"] and st["mem"] < 13:      # a 16 GB Steam Deck reports about 14.5 GB
             app.dialog("Not enough memory", f"This PC has {st['mem']:.0f} GB of RAM. The server and the game need "
                        "16 GB or more to run.")
             return
@@ -726,8 +726,16 @@ class SetupScreen(Screen):
             app.call_soon(finish)
         threading.Thread(target=worker, daemon=True).start()
 
+    PODMAN_HELP = ("Podman (SteamOS's built-in container tool) isn't working. In Desktop Mode, open Konsole and "
+                   "run:\n\n    podman info\n\nIf that shows an error, update SteamOS (Podman comes with SteamOS 3.5 "
+                   "and later), restart the Deck, and press 'Check again'.")
+
     def docker_help(self):
         st = (self.st or {}).get("docker", "missing")
+        if installer.PODMAN:
+            self.app.dialog("Podman is needed", self.PODMAN_HELP, [("Check again", self.refresh, "primary")],
+                            width=860)
+            return
         self.app.dialog("Docker is needed", self.DOCKER_HELP.get(st, self.DOCKER_HELP["missing"]),
                         [("Check again", self.refresh, "primary")], width=860)
 
@@ -761,7 +769,7 @@ class SetupScreen(Screen):
         ws.append(ui.Button("su_install", (X0 + CW - 360, Y0 + CH - 100, 360, 92), label,
                             (lambda: app.go("play")) if done else self.install, style, sub=sub, size=26,
                             enabled=bool(st) and app.server.busy is None))
-        if st and st["docker"] != "ok":
+        if st and st["docker"] not in ("ok", "podman-setup"):
             ws.append(ui.Button("su_docker", (X0, Y0 + CH - 100, 300, 92), "Docker help", self.docker_help,
                                 "danger", size=22))
         return ws
@@ -808,13 +816,15 @@ class SetupScreen(Screen):
         r = col(2, "3. This PC")
         y = r.y + 48
         if st:
-            check_row(surf, r.x + 16, y, st["docker"] == "ok", "Docker", st["docker_detail"], colw - 24)
+            dok = True if st["docker"] == "ok" else (None if st["docker"] == "podman-setup" else False)
+            check_row(surf, r.x + 16, y, dok, "Podman" if installer.PODMAN else "Docker", st["docker_detail"],
+                      colw - 24)
             y += 62
             p = st["proton"]
             check_row(surf, r.x + 16, y, bool(p), "Proton", os.path.basename(os.path.dirname(p)) if p else
                       "Get Proton Experimental in Steam", colw - 24)
             y += 62
-            check_row(surf, r.x + 16, y, st["mem"] >= 15 or None, "Memory", f"{st['mem']:.0f} GB (16 GB needed)",
+            check_row(surf, r.x + 16, y, st["mem"] >= 13 or None, "Memory", f"{st['mem']:.0f} GB (16 GB needed)",
                       colw - 24)
             y += 62
             need_gb = (0 if st["server"] else 3) + (0 if st["client"] else 10) + (0 if st["drivers"] else 45)
@@ -824,7 +834,7 @@ class SetupScreen(Screen):
             text(surf, "Checking…", (r.x + 18, y), 17, C["dim"])
         msg = ("Everything is installed." if st and installer.installed(st) else
                "Press Install: it unpacks your files and sets up the server. The first time takes 20-40 minutes.")
-        dx = 320 if st and st["docker"] != "ok" else 0
+        dx = 320 if st and st["docker"] not in ("ok", "podman-setup") else 0
         ui.text_block(surf, msg, (X0 + dx, Y0 + CH - 92), CW - 400 - dx, 17, C["muted"])
 
 

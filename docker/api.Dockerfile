@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim
+FROM docker.io/library/node:22-bookworm-slim
 WORKDIR /app
 COPY sources/RustyHearts-API-master/package.json ./
 RUN npm install --omit=dev && npm cache clean --force

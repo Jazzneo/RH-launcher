@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# "docker" for SteamOS / Steam Deck: there is no Docker there, but Podman is built in (SteamOS 3.5+).
+# RH Launcher puts this folder first on PATH when docker is missing and podman exists.
+#  - "docker compose ..." runs Docker Compose (downloaded by Setup) against Podman's Docker-compatible socket
+#  - "docker info --format ..." answers the two questions the launcher asks
+#  - everything else (exec, cp, ps, inspect, logs, image inspect) goes to podman, which takes the same arguments
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../.." && pwd)"
+COMPOSE_BIN="$ROOT/runtime/podman/docker-compose"
+SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+export DOCKER_HOST="${DOCKER_HOST:-unix://$SOCK}"
+
+case "${1:-}" in
+  compose)
+    shift
+    if [[ ! -x "$COMPOSE_BIN" ]]; then
+      echo "Docker Compose isn't installed yet: open RH Launcher > Setup and press Install everything." >&2; exit 1
+    fi
+    [[ -S "$SOCK" ]] || systemctl --user start podman.socket 2>/dev/null || true
+    # Podman has no BuildKit: use the classic build API.
+    export DOCKER_BUILDKIT=0 COMPOSE_DOCKER_CLI_BUILD=0
+    # Add the Podman overrides right after our compose.yaml.
+    args=()
+    while [[ $# -gt 0 ]]; do
+      args+=("$1")
+      if [[ "$1" == -f && "${2:-}" == */docker/compose.yaml ]]; then
+        args+=("$2" -f "${2%/compose.yaml}/compose.podman.yaml"); shift
+      fi
+      shift
+    done
+    exec "$COMPOSE_BIN" "${args[@]}" ;;
+  info)
+    shift; fmt=
+    while [[ $# -gt 0 ]]; do case "$1" in --format|-f) fmt="${2:-}"; shift 2 ;; *) shift ;; esac; done
+    case "$fmt" in
+      *CgroupVersion*) v="$(podman info --format '{{.Host.CgroupsVersion}}')" || exit 1; echo "${v#v}" ;;
+      *ServerVersion*) v="$(podman version --format '{{.Client.Version}}')" || exit 1; echo "podman $v" ;;
+      "") exec podman info ;;
+      *) podman info >/dev/null || exit 1 ;;
+    esac ;;
+  image)
+    if [[ "${2:-}" == inspect ]]; then
+      # Images built through the Docker-compatible API are stored as docker.io/library/<name>.
+      shift 2; rc=0
+      for n in "$@"; do
+        [[ "$n" == -* ]] && continue
+        podman image inspect "$n" 2>/dev/null || podman image inspect "docker.io/library/$n" 2>/dev/null \
+          || podman image inspect "localhost/$n" 2>/dev/null || { echo "No such image: $n" >&2; rc=1; }
+      done
+      exit $rc
+    fi
+    exec podman "$@" ;;
+  *) exec podman "$@" ;;
+esac

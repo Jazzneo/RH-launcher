@@ -16,6 +16,7 @@ game client yourself from the community release (see *Where to get the files*).
 | Linux PC (x86-64) | Tested on Bazzite (KDE). Other distros should work. |
 | Memory | **16 GB free RAM** when the server starts (32 GB installed recommended). |
 | Disk space | About **60 GB** free while installing (the VM disk is unpacked for a moment, then deleted), about 20 GB afterwards plus the downloads. |
+| Steam Deck | Supported through SteamOS's built-in **Podman** (no Docker needed); see the README's Steam Deck section. |
 | Docker | Docker Engine **with the Compose plugin** (`docker compose version` must work). On Bazzite use the developer image (bazzite-dx), which includes Docker. Your user must be allowed to run `docker`. |
 | Steam + Proton | Install **Proton Experimental** (Steam → Library → Tools) or GE-Proton. |
 | Tools | Nothing else: RH Launcher brings its own Python and 7-Zip. |

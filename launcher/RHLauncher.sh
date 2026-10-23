@@ -10,6 +10,12 @@ PY="$DIR/runtime/python/bin/python3.12"
 chmod +x "$PY" "$DIR/runtime/bin/7zzs" "$DIR/RHLauncher.sh" 2>/dev/null
 find "$ROOT/docker" "$ROOT/tools" -maxdepth 1 \( -name '*.sh' -o -name '*.py' \) -exec chmod +x {} + 2>/dev/null
 
+# SteamOS / Steam Deck: no Docker, but Podman is built in. Use the "docker" stand-in that drives Podman.
+if [ -n "$RH_PODMAN" ] || { ! command -v docker >/dev/null 2>&1 && command -v podman >/dev/null 2>&1; }; then
+  chmod +x "$DIR/runtime/podman-shim/docker" 2>/dev/null
+  export PATH="$DIR/runtime/podman-shim:$PATH" RH_PODMAN=1
+fi
+
 if [ ! -f "$PY" ]; then
   MSG="RH Launcher's Python runtime is missing ($PY). Unpack the whole RH-launcher zip again."
   echo "$MSG" >&2
