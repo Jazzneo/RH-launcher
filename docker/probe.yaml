@@ -1,6 +1,0 @@
-services:
-  game:
-    mem_limit: 1g
-    memswap_limit: 1g
-    cpus: 1
-    pids_limit: 128

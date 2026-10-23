@@ -106,7 +106,6 @@ launcher/runtime/python/bin/python3 tools/winvhdx.py drivers \
 ```
 
 It ends with `Done: 3 folders and 18 driver files installed.` You can delete the VM files afterwards.
-(The older `tools/extract-windows-drivers.sh` does the same with libguestfs.)
 
 ### Step 5: Prepare and build the server
 

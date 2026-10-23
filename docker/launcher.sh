@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Rusty Hearts all-in-one launcher: start server -> play -> stop server.
-# Usage: launcher.sh [play|trace|stop|status]   (no argument = menu)
+# Usage: launcher.sh [play|stop|status|display]   (no argument = menu; RH Launcher uses server-start/server-stop/status-json/client)
 set -uo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 if ! command -v docker >/dev/null && command -v host-spawn >/dev/null; then
@@ -29,19 +29,17 @@ menu() {
   if gui && have kdialog; then
     choice=$(kdialog --title "$TITLE" --menu "What do you want to do?" \
       play 'Play (start server + game, stop server when game closes)' \
-      trace 'Play + record login trace (for debugging)' \
       display 'Display settings (window / borderless / fullscreen, resolution)' \
       stop 'Stop server' status 'Show status' 2>/dev/null) || exit 0
   elif gui; then
     choice=$(zenity --list --title="$TITLE" --text="What do you want to do?" --column=Action --column=Description \
       play 'Play (start server + game, stop server when game closes)' \
-      trace 'Play + record login trace (for debugging)' \
       display 'Display settings (window / borderless / fullscreen, resolution)' \
       stop 'Stop server' status 'Show status' --hide-column=1 --print-column=1 2>/dev/null) || exit 0
   else
-    echo "1) Play   2) Play + login trace   3) Display settings   4) Stop server   5) Status   q) Quit" >&2
+    echo "1) Play   2) Display settings   3) Stop server   4) Status   q) Quit" >&2
     read -rp "Choose: " n
-    case "$n" in 1) choice=play;; 2) choice=trace;; 3) choice=display;; 4) choice=stop;; 5) choice=status;; *) exit 0;; esac
+    case "$n" in 1) choice=play;; 2) choice=display;; 3) choice=stop;; 4) choice=status;; *) exit 0;; esac
   fi
   echo "$choice"
 }
@@ -244,7 +242,6 @@ action="${1:-}"
 [[ -n "$action" ]] || action=$(menu)
 case "$action" in
   play)   play ;;
-  trace)  play trace ;;
   stop)   stop_all; info 'Server stopped.' ;;
   status) status ;;
   display) bash "$ROOT/tools/display-settings.sh" ;;
