@@ -460,10 +460,60 @@ class App:
             self.call_soon(finish)
         threading.Thread(target=worker, daemon=True).start()
 
+    # ------------------------------------------------ podman (Steam Deck)
+    def podman_ready(self):
+        """Podman mode only: (cached) True when Podman's service and Docker Compose are set up."""
+        from . import installer
+        if not installer.PODMAN:
+            return True
+        c = getattr(self, "_podman_cache", None)
+        if not c or time.time() - c[1] > 10:
+            ok = os.access(installer.COMPOSE_BIN, os.X_OK) and os.path.exists(installer.podman_socket())
+            self._podman_cache = c = (ok, time.time())
+        return c[0]
+
+    def setup_podman(self, then=None):
+        """Turn on Podman's Docker-compatible service and get Docker Compose (the Setup 'engine' step)."""
+        from . import installer
+        log = []
+        modal = Progress(self, "Turning on Podman", log=log)
+        inst = installer.Installer({}, lambda m: setattr(modal, "status", m),
+                                   lambda line: (log.append(line[:200]), log.__delitem__(slice(None, -200))))
+        modal.cancel, modal.source, modal.hints = inst.cancel, inst, [("B", "Cancel")]
+        self.open_modal(modal)
+
+        def worker():
+            err = None
+            try:
+                inst.engine()
+            except installer.Cancelled:
+                err = "cancelled"
+            except Exception as e:
+                err = str(e) or e.__class__.__name__
+
+            def finish():
+                self.close_modal(modal)
+                self._podman_cache = None
+                self.server.refresh_soon()
+                if err == "cancelled":
+                    return
+                if err:
+                    self.dialog("Couldn't turn on Podman", err)
+                    return
+                self.log("Podman is on")
+                self.toast("Podman is on", "ok")
+                if then:
+                    then()
+            self.call_soon(finish)
+        threading.Thread(target=worker, daemon=True).start()
+
     def start_server(self, then=None):
         if self.server.ready:
             if then:
                 then()
+            return
+        if not self.podman_ready():
+            self.setup_podman(then=lambda: self.start_server(then=then))
             return
 
         def done(ok, lines):

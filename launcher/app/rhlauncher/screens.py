@@ -164,7 +164,10 @@ class ServerScreen(Screen):
               ui.Button("srv_logs", (X0 + 472, Y0, 220, 64), "Open logs folder",
                         lambda: integration.open_folder(LOG_DIR) or app.toast("No file manager found", "warn"),
                         "ghost")]
-        if srv.other:
+        if not app.podman_ready():
+            ws.append(ui.Button("srv_podman", (X0 + 708, Y0, CW - 708, 64), "Turn on Podman", app.setup_podman,
+                                "success", size=19, enabled=idle))
+        elif srv.other:
             ws.append(ui.Button("srv_other", (X0 + 708, Y0, CW - 708, 64), f"Turn off {backend.OTHER_ENGINE} server",
                                 self.stop_other, "danger", size=18, enabled=idle))
         items = list(reversed(app.activity)) or []
@@ -787,6 +790,9 @@ class SetupScreen(Screen):
         ws.append(ui.Button("su_install", (X0 + CW - 360, Y0 + CH - 100, 360, 92), label,
                             (lambda: app.go("play")) if done else self.install, style, sub=sub, size=26,
                             enabled=bool(st) and app.server.busy is None))
+        if st and st["docker"] == "podman-setup":
+            ws.append(ui.Button("su_docker", (X0, Y0 + CH - 100, 300, 92), "Turn on Podman",
+                                lambda: app.setup_podman(then=self.refresh), "success", size=22))
         if st and st["docker"] not in ("ok", "podman-setup"):
             ws.append(ui.Button("su_docker", (X0, Y0 + CH - 100, 300, 92), "Docker help", self.docker_help,
                                 "danger", size=22))
@@ -852,7 +858,7 @@ class SetupScreen(Screen):
             text(surf, "Checking…", (r.x + 18, y), 17, C["dim"])
         msg = ("Everything is installed." if st and installer.installed(st) else
                "Press Install: it unpacks your files and sets up the server. The first time takes 20-40 minutes.")
-        dx = 320 if st and st["docker"] not in ("ok", "podman-setup") else 0
+        dx = 320 if st and st["docker"] != "ok" else 0
         ui.text_block(surf, msg, (X0 + dx, Y0 + CH - 92), CW - 400 - dx, 17, C["muted"])
 
 

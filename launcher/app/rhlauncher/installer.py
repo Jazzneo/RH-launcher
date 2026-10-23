@@ -245,7 +245,7 @@ def docker_state():
             return "stopped", "Podman doesn't work: " + ((r.stderr or "").strip().splitlines() or ["?"])[-1][:120]
         ver = r.stdout.strip()
         if not os.access(COMPOSE_BIN, os.X_OK) or not os.path.exists(podman_socket()):
-            return "podman-setup", f"Podman {ver} found; Install finishes the setup"
+            return "podman-setup", f"Podman {ver}: not turned on yet"
         return "ok", f"Podman {ver}, Compose {COMPOSE_VERSION}"
     try:
         cmd = backend._docker()
