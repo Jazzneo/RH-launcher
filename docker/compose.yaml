@@ -8,11 +8,11 @@ services:
       MSSQL_PID: Developer
       MSSQL_SA_PASSWORD: ${RH_SQL_PASSWORD:?Run docker/prepare.py first}
       MSSQL_IP_ADDRESS: 127.0.0.1
-      MSSQL_MEMORY_LIMIT_MB: 2048
+      MSSQL_MEMORY_LIMIT_MB: ${RH_SQL_LIMIT_MB:-2048}
     volumes:
       - sql-data:/var/opt/mssql
-    mem_limit: 3g
-    memswap_limit: 3g
+    mem_limit: ${RH_SQL_MEM:-3g}
+    memswap_limit: ${RH_SQL_MEM:-3g}
     cpus: 2
     pids_limit: 1024
     restart: 'no'
@@ -50,8 +50,8 @@ services:
       LOG_AUTH_CONSOLE: 'true'
       LOG_LEVEL: info
       TZ: UTC
-    mem_limit: 512m
-    memswap_limit: 512m
+    mem_limit: ${RH_API_MEM:-512m}
+    memswap_limit: ${RH_API_MEM:-512m}
     cpus: 1
     pids_limit: 128
     restart: 'no'
@@ -72,8 +72,8 @@ services:
       - ../runtime/linux/windows-dlls:/opt/rh-windows:ro,z
       - ../runtime/linux/windows-components:/opt/rh-components:ro,z
       - wine11-data:/var/lib/rh-wine
-    mem_limit: 8g
-    memswap_limit: 8g
+    mem_limit: ${RH_GAME_MEM:-8g}
+    memswap_limit: ${RH_GAME_MEM:-8g}
     cpus: 3
     pids_limit: 1024
     restart: 'no'

@@ -310,14 +310,34 @@ class SettingsScreen(Screen):
             ui.Button("set_autologin", (X0 + 652, Y0 + 270, 300, 64), "Auto-login…",
                       lambda: app.open_modal(AutoLoginDialog(app)), "ghost", size=20,
                       sub=("On" if backend.load_autologin()["enabled"] else "Off")),
+            ui.Selector("set_memory", (X0, Y0 + 356, CW, 76), "Server memory (applies next server start)",
+                        [self.mem_label(k) for k in backend.MEM_CHOICES], backend.MEM_CHOICES.index(backend.memory_choice()),
+                        self.set_memory),
         ]
 
+    @staticmethod
+    def mem_label(k):
+        if k == "auto":
+            return f"Automatic: {backend.MEM_PROFILES[backend.memory_resolve('auto')]['label'].split(' (')[0]} for this PC"
+        p = backend.MEM_PROFILES[k]
+        return f"{p['label']}: SQL {p['sql_limit_mb']} MB, game servers {p['game_mem'].upper()}"
+
+    def set_memory(self, i):
+        backend.memory_save(backend.MEM_CHOICES[i])
+        if self.app.server.running or self.app.server.ready:
+            self.app.toast("Restart the server (Server tab) to use the new memory setting", "info", 6)
+
     def draw(self, surf):
-        r = pygame.Rect(X0, Y0 + 356, CW, CH - 364)
+        r = pygame.Rect(X0, Y0 + 448, CW, CH - 456)
         panel(surf, r, C["panel"], 16)
+        p = backend.MEM_PROFILES[backend.memory_resolve(backend.memory_choice())]
+        y = ui.text_block(surf, f"Server memory now: SQL Server {p['sql_limit_mb']} MB, game servers up to "
+                                f"{p['game_mem'].upper()}, needs {p['start_gib']} GB free to start. Low fits a Steam "
+                                "Deck; if the server or game crashes, go one step up.",
+                          (r.x + 24, r.y + 18), r.w - 48, 16, C["text"])
         ui.text_block(surf, "Controls: D-pad / stick to move, A to select, B to go back, LB/RB to switch tabs, "
                             "START to play, SELECT to quit. Mouse, touch and keyboard work too.",
-                      (r.x + 24, r.y + 20), r.w - 48, 17, C["muted"])
+                      (r.x + 24, y + 12), r.w - 48, 16, C["muted"])
 
 
 # ================================================================= ACCOUNTS

@@ -32,7 +32,17 @@ if not env.exists():
     else:
         write_private(env, 'RH_SQL_PASSWORD=Rh9!' + secrets.token_urlsafe(24) + '\n')
 if not shared.exists():
-    write_private(shared, env.read_text())
+    write_private(shared, ''.join(l + '\n' for l in env.read_text().splitlines() if l.startswith('RH_SQL_PASSWORD=')))
+
+# Memory limits for compose.yaml, from the Server memory setting (docker/memory_profile.py).
+import memory_profile
+prof = memory_profile.load(ROOT)
+keep = [l for l in env.read_text().splitlines() if not l.startswith(('RH_SQL_LIMIT_MB=', 'RH_SQL_MEM=', 'RH_API_MEM=', 'RH_GAME_MEM='))]
+keep += [f"RH_SQL_LIMIT_MB={prof['sql_limit_mb']}", f"RH_SQL_MEM={prof['sql_mem']}", f"RH_API_MEM={prof['api_mem']}",
+         f"RH_GAME_MEM={prof['game_mem']}"]
+new_env = '\n'.join(keep) + '\n'
+if new_env != env.read_text():
+    write_private(env, new_env)
 password = next(line.split('=', 1)[1] for line in env.read_text().splitlines() if line.startswith('RH_SQL_PASSWORD='))
 server = ROOT / 'runtime/linux/server'
 if not server.exists():

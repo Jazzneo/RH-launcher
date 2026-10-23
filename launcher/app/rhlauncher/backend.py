@@ -684,3 +684,23 @@ def adopt_password(progress=None):
         os.replace(target + ".tmp", target)
     where = "your saved password" if path == SHARED_ENV else os.path.dirname(os.path.dirname(path))
     return f"Using the database password from {where}."
+
+
+# ------------------------------------------------------------ server memory
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location("rh_memory_profile", os.path.join(ROOT, "docker", "memory_profile.py"))
+_mp = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(_mp)
+MEM_PROFILES, MEM_CHOICES = _mp.PROFILES, _mp.CHOICES
+
+
+def memory_choice():
+    return _mp.choice(ROOT)
+
+
+def memory_resolve(name):
+    return _mp.resolve(name)
+
+
+def memory_save(name):
+    _mp.save(ROOT, name)

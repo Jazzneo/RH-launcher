@@ -65,5 +65,10 @@ for path in sorted(backups.glob('*.bak')):
         raise SystemExit('No restorable files found for ' + db)
     print('Restoring ' + db + '...')
     sql(f"RESTORE DATABASE [{db}] FROM DISK=N'{target}' WITH " + ', '.join(moves) + ', RECOVERY;')
+# SQL Server's own memory cap, from the Server memory setting (also set as MSSQL_MEMORY_LIMIT_MB).
+import memory_profile
+limit = memory_profile.load(ROOT)['sql_limit_mb']
+sql(f"SET NOCOUNT ON; EXEC sp_configure 'show advanced options', 1; RECONFIGURE; "
+    f"EXEC sp_configure 'max server memory (MB)', {max(512, limit - 256)}; RECONFIGURE;")
 sql("UPDATE RustyHearts_Auth.dbo.ServerOption SET PublicAddress='127.0.0.1' WHERE PublicAddress<>''; UPDATE RustyHearts_Auth.dbo.ServerOption SET PrivateAddress='127.0.0.1' WHERE PrivateAddress<>'';")
 print('Database restore/configuration finished. Existing databases were preserved.')
