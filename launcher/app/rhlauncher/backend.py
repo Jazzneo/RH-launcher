@@ -375,6 +375,14 @@ def inspect_client(folder):
     return info
 
 
+def has_d3dcompiler(folder):
+    """The game needs Microsoft's D3DCompiler_43.dll next to it (Wine's own can't build its effects)."""
+    try:
+        return any(n.lower() == "d3dcompiler_43.dll" for n in os.listdir(folder))
+    except OSError:
+        return False
+
+
 def load_client_dir():
     try:
         with open(CLIENT_CONF, encoding="utf-8") as f:

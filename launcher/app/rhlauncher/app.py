@@ -530,6 +530,11 @@ class App:
             self.go("setup")
             self.toast("Rusty Hearts isn't installed yet: press Install everything.", "warn", 6)
             return
+        if self.client_ok() and not backend.has_d3dcompiler(backend.load_client_dir()):
+            self.go("setup")
+            self.toast("Your game folder needs Microsoft's DirectX shader compiler: press Install everything "
+                       "to add it.", "warn", 8)
+            return
         if not self.client_ok():
             self.go("client")
             self.toast("First, show the launcher where your Rusty Hearts game is.", "warn", 6)

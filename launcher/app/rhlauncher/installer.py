@@ -29,6 +29,12 @@ IMAGES = ["mcr.microsoft.com/mssql/server:2022-latest", "rusty-hearts-offline-ap
 DOWNLOAD_PAGE = "https://forum.ragezone.com"
 FORUM_PAGE = "https://forum.ragezone.com"
 CACHE = os.path.join(DATA_DIR, "archives.json")
+# The client archives lack D3DCompiler_43.dll (32-bit); Wine's built-in one can't compile the game's effects
+# ("E5033: Unknown target profile '__fx_2_0__'"). It comes from Microsoft's DirectX June 2010 runtime.
+DX_URL = ("https://download.microsoft.com/download/8/4/A/84A35BF1-DAFE-4AE8-82AF-AD2AE20B6B14/"
+          "directx_Jun2010_redist.exe")
+DX_CAB = "Jun2010_D3DCompiler_43_x86.cab"
+D3DCOMPILER_SHA256 = "2f23182ec6f4889397ac4bf03d62536136c5bdba825c7d2c4ef08c827f3a8a1c"
 ARCHIVE_EXT = (".7z", ".zip", ".rar", ".vhdx")
 GIB = 1 << 30
 
@@ -77,6 +83,9 @@ def identify(path):
     except Exception:
         return None
     total = sum(s for _, s, _ in members)
+    for name, size, d in members:
+        if not d and name.split("/")[-1].lower() == DX_CAB.lower():
+            return {"kind": "dxredist", "member": name, "size": total}
     for name, size, d in members:
         low = name.lower()
         if not d and low.endswith(".vhdx"):
@@ -135,7 +144,8 @@ def find_archives(progress=None, extra=None):
             return
         for e in entries:
             try:
-                if e.is_file() and e.name.lower().endswith(ARCHIVE_EXT):
+                if e.is_file() and (e.name.lower().endswith(ARCHIVE_EXT) or
+                                    (e.name.lower().startswith("directx") and e.name.lower().endswith(".exe"))):
                     if e.name.lower().endswith(".vhdx") or e.stat().st_size > 50 * 1024 * 1024:
                         candidates.append(e.path)
                 elif depth > 1 and e.is_dir(follow_symlinks=False) and not e.name.startswith(".") \
@@ -194,7 +204,7 @@ def drivers_ok():
 
 def client_ok():
     d = backend.load_client_dir()
-    return bool(d and backend.inspect_client(d)["ok"])
+    return bool(d and backend.inspect_client(d)["ok"] and backend.has_d3dcompiler(d))
 
 
 def configured_ok():
@@ -404,8 +414,10 @@ class Installer:
                 shutil.rmtree(tmp, ignore_errors=True)
 
     def client(self):
-        if client_ok():
-            self.log(f"Game client: {backend.load_client_dir()}")
+        cur = backend.load_client_dir()
+        if cur and backend.inspect_client(cur)["ok"]:
+            self.log(f"Game client: {cur}")
+            self.d3dcompiler(cur)
             return
         arc = self.a.get("client")
         if not arc:
@@ -430,6 +442,52 @@ class Installer:
                     f.write(t2)
         except OSError:
             pass
+        self.d3dcompiler(folder)
+
+    def d3dcompiler(self, folder):
+        """Put Microsoft's D3DCompiler_43.dll (from the DirectX June 2010 runtime) into the client folder."""
+        import hashlib
+        import urllib.request
+        if backend.has_d3dcompiler(folder):
+            return
+        tmp = tempfile.mkdtemp(prefix="setup-dx-", dir=os.path.join(ROOT, "runtime"))
+        try:
+            redist = self.a.get("dxredist")
+            if not redist:
+                self.say("Downloading the DirectX shader compiler from Microsoft (100 MB)…")
+                redist = os.path.join(tmp, "directx_Jun2010_redist.exe")
+                try:
+                    with urllib.request.urlopen(DX_URL, timeout=60) as r, open(redist, "wb") as f:
+                        total = int(r.headers.get("Content-Length") or 0)
+                        got = 0
+                        while True:
+                            if self.cancelled:
+                                raise Cancelled()
+                            chunk = r.read(1 << 20)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            got += len(chunk)
+                            self.fraction = got / total if total else None
+                except Cancelled:
+                    raise
+                except Exception as e:
+                    raise RuntimeError("Couldn't download Microsoft's DirectX June 2010 runtime "
+                                       f"({e}). Download 'directx_Jun2010_redist.exe' from Microsoft into your "
+                                       "Downloads folder, press 'Look again', then Install again.")
+                self.fraction = None
+            self.say("Adding the DirectX shader compiler to the game folder…")
+            self._run([SEVENZIP, "e", "-y", "-o" + tmp, redist, DX_CAB])
+            self._run([SEVENZIP, "e", "-y", "-o" + tmp, os.path.join(tmp, DX_CAB), "D3DCompiler_43.dll"])
+            dll = os.path.join(tmp, "D3DCompiler_43.dll")
+            with open(dll, "rb") as f:
+                digest = hashlib.sha256(f.read()).hexdigest()
+            if digest != D3DCOMPILER_SHA256:
+                raise RuntimeError("The DirectX package had an unexpected D3DCompiler_43.dll; not using it.")
+            shutil.copy2(dll, os.path.join(folder, "D3DCompiler_43.dll"))
+            self.log("D3DCompiler_43.dll added to the game folder")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
     def configure(self):
         self.say("Writing the local server settings…")

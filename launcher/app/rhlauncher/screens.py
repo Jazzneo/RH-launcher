@@ -651,7 +651,8 @@ class SetupScreen(Screen):
             need.append("server")
         if not st.get("drivers") and "vhdx" not in self.found:
             need.append("vm")
-        if not st.get("client"):
+        cur = backend.load_client_dir()
+        if not (cur and backend.inspect_client(cur)["ok"]):     # only the shader DLL missing: no archive needed
             need.append("client")
         return need
 

@@ -50,6 +50,9 @@ Download:
    - unpacks the VM disk for a moment, copies the 18 Windows database drivers out of it (read-only,
      with its built-in reader `tools/winvhdx.py`), and deletes the unpacked disk again,
    - unpacks the game client into `gameclient/` and points the game at your own server,
+   - adds Microsoft's DirectX shader compiler (`D3DCompiler_43.dll`, from the DirectX June 2010 runtime)
+     to the game folder: the client download doesn't include it, and without it the game shows
+     "E5033: Unknown target profile '__fx_2_0__'",
    - writes the server settings (`docker/prepare.py`) and applies the Wine fix for the database
      relay (`tools/patch-dbc-com.py`),
    - downloads SQL Server for Linux and builds the two Docker images.
