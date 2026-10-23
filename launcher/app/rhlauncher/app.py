@@ -477,6 +477,22 @@ class App:
                     if l.startswith("ERROR") and l.replace("ERROR: ", "") not in errs:
                         errs.append(l.replace("ERROR: ", ""))
                 err = "\n\n".join(errs[:3]) or None
+                if err and "refused this folder's password" in err:
+                    def fix():
+                        def done2(res, e):
+                            if e:
+                                self.dialog("Couldn't fix the password", str(e))
+                                return
+                            self.log(res)
+                            self.toast(res, "ok", 6)
+                            self.start_server(then=then)
+                        self.run_task("Finding the database password", backend.adopt_password, done2)
+                    self.dialog("Wrong database password",
+                                "Your server's database was set up from another RH Launcher folder, and this "
+                                "folder has a different password for it. Your characters are fine.\n\n"
+                                "'Fix it for me' finds that folder's password, checks it, and uses it here.",
+                                [("Close", None, "ghost"), ("Fix it for me", fix, "primary")])
+                    return
                 self.dialog("The server didn't start",
                             (err or "Startup stopped or was cancelled.") +
                             "\n\nDetails are in the Server tab's activity log and in the logs folder.")

@@ -534,3 +534,97 @@ def forget_autologin():
         os.remove(AUTOLOGIN_CRED)
     except OSError:
         pass
+
+
+# ------------------------------------------------- shared database password
+ENV_FILE = os.path.join(ROOT, "docker", ".env")
+SHARED_ENV = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "rh-launcher",
+                          "sql.env")
+
+
+def _read_password(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("RH_SQL_PASSWORD=") and line.strip()[16:]:
+                    return line.strip()[16:]
+    except OSError:
+        pass
+    return None
+
+
+def _password_works(pw):
+    """True/False if the running SQL container accepts pw, None if it can't be tested."""
+    try:
+        r = subprocess.run(_docker() + ["exec", "-e", "SQLCMDPASSWORD", SQL_CONTAINER, "/opt/mssql-tools18/bin/sqlcmd",
+                                        "-S", "127.0.0.1", "-U", "sa", "-C", "-b", "-Q", "SELECT 1"],
+                           env=dict(os.environ, SQLCMDPASSWORD=pw), capture_output=True, text=True, timeout=30)
+    except Exception:
+        return None
+    out = (r.stdout or "") + (r.stderr or "")
+    if r.returncode == 0:
+        return True
+    return False if "Login failed" in out else None
+
+
+def _other_env_files(progress=None, max_seconds=40):
+    """docker/.env files of other RH Launcher folders (and the shared copy), newest first."""
+    found, t0, me = [], time.time(), os.path.realpath(ROOT)
+    if os.path.isfile(SHARED_ENV):
+        found.append(SHARED_ENV)
+    skip = {".cache", ".local", ".var", ".steam", "node_modules", "compatdata", "steamapps", "runtime", "pfx",
+            "server-package", "gameclient", "vm", "downloads", ".git", "proc", "sys"}
+    user = os.environ.get("USER", "")
+    for top in [os.path.expanduser("~"), f"/run/media/{user}", "/mnt", "/media"]:
+        if not os.path.isdir(top):
+            continue
+        if progress:
+            progress(f"Looking in {top}…")
+        for dirpath, dirnames, filenames in os.walk(top):
+            if time.time() - t0 > max_seconds:
+                break
+            depth = dirpath[len(top):].count(os.sep)
+            dirnames[:] = [d for d in dirnames if d not in skip and not d.startswith(".") and depth < 5]
+            if os.path.basename(dirpath) == "docker" and ".env" in filenames and "compose.yaml" in filenames:
+                folder = os.path.realpath(os.path.dirname(dirpath))
+                if folder != me:
+                    found.append(os.path.join(dirpath, ".env"))
+    return sorted(set(found), key=lambda p: -os.path.getmtime(p))
+
+
+def adopt_password(progress=None):
+    """Find the password the existing database was made with and use it in this folder. Returns a message."""
+    say = progress or (lambda m: None)
+    mine = _read_password(ENV_FILE)
+    candidates = []
+    for path in _other_env_files(say):
+        pw = _read_password(path)
+        if pw and pw != mine and pw not in [c[1] for c in candidates]:
+            candidates.append((path, pw))
+    if not candidates:
+        raise RuntimeError("No other RH Launcher folder with a saved password was found. Copy docker/.env from "
+                           "the folder you set the server up in into this folder's docker/ folder.")
+    chosen = None
+    say("Checking which password the database accepts…")
+    for path, pw in candidates:
+        ok = _password_works(pw)
+        if ok:
+            chosen = (path, pw)
+            break
+        if ok is None and chosen is None:
+            chosen = (path, pw)          # can't test (database not running): newest guess
+    if not chosen:
+        raise RuntimeError("The database didn't accept any of the saved passwords found on this PC.")
+    path, pw = chosen
+    text = "RH_SQL_PASSWORD=%s\n" % pw
+    for target in (ENV_FILE, SHARED_ENV):
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        if os.path.exists(target) and target == ENV_FILE:
+            shutil.copy2(target, target + ".old")
+            os.chmod(target + ".old", 0o600)
+        fd = os.open(target + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.replace(target + ".tmp", target)
+    where = "your saved password" if path == SHARED_ENV else os.path.dirname(os.path.dirname(path))
+    return f"Using the database password from {where}."
