@@ -63,6 +63,12 @@ server_ready() {
     "${COMPOSE[@]}" exec -T game test -f /tmp/rh-ready >/dev/null 2>&1 && ports_up
 }
 client_running() { systemctl --user is-active --quiet rusty-hearts-client.scope 2>/dev/null; }
+# A game that crashed can leave its scope unit behind ("already loaded"): clear it before starting again.
+clear_client_scope() {
+  client_running && return 0
+  systemctl --user stop rusty-hearts-client.scope >/dev/null 2>&1 || true
+  systemctl --user reset-failed rusty-hearts-client.scope >/dev/null 2>&1 || true
+}
 
 status() {
   local s; s=$(running_services | tr '\n' ' ')
@@ -197,6 +203,7 @@ play() {
   say 'Launching game. Close the game window when you are done.'
   [[ -n "$trace" ]] && echo 'Trace mode: log in, click "Ragezone", wait until it fails (~15 s), then close the game.'
   export RH_API_URL=http://127.0.0.1:3000
+  clear_client_scope
   systemd-run --user --scope --unit=rusty-hearts-client --quiet \
     -p MemoryMax=2G -p MemorySwapMax=0 -p TasksMax=256 -- "$ROOT/tools/run-client.sh" || true
   echo 'Game closed.'
@@ -246,6 +253,7 @@ client_only() {
     export RH_API_URL=http://127.0.0.1:3000
   fi
   say 'Launching game.'
+  clear_client_scope
   systemd-run --user --scope --unit=rusty-hearts-client --quiet \
     -p MemoryMax=2G -p MemorySwapMax=0 -p TasksMax=256 -- "$ROOT/tools/run-client.sh"
 }

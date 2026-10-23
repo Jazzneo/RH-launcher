@@ -194,6 +194,7 @@ def start_client():
 
 def stop_client():
     subprocess.run(["systemctl", "--user", "stop", CLIENT_UNIT], capture_output=True)
+    subprocess.run(["systemctl", "--user", "reset-failed", CLIENT_UNIT], capture_output=True)
 
 
 def screen_sizes(backend):
