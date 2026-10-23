@@ -4,7 +4,7 @@ import os
 import threading
 
 APP_NAME = "RHLauncher"
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.1.0"
 
 # Rusty heart/launcher/app/rhlauncher/config.py -> Rusty heart/
 LAUNCHER_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
