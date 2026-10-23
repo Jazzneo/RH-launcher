@@ -25,8 +25,8 @@ PKG = os.path.join(ROOT, "server-package")
 SERVER_DIR = os.path.join(PKG, SERVER_NAME)
 COMPOSE = ["compose", "-f", os.path.join(ROOT, "docker", "compose.yaml")]
 IMAGES = ["mcr.microsoft.com/mssql/server:2022-latest", "rusty-hearts-offline-api", "rusty-hearts-offline-game"]
-# Download folder linked from the RaGEZONE "RustyHeartenstein" release (see docs/INSTALL-SERVER.md)
-DOWNLOAD_PAGE = "https://drive.google.com/drive/u/0/folders/1hCQElZ4qNMPLkCx6xzrU68yai3YN54ek"
+# The RaGEZONE forum, where the "RustyHeartenstein" release is posted (see docs/INSTALL-SERVER.md)
+DOWNLOAD_PAGE = "https://forum.ragezone.com"
 FORUM_PAGE = "https://forum.ragezone.com"
 CACHE = os.path.join(DATA_DIR, "archives.json")
 ARCHIVE_EXT = (".7z", ".zip", ".rar", ".vhdx")

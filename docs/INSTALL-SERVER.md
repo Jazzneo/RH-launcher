@@ -27,7 +27,6 @@ and the community setup guide that goes with it:
 
 - RaGEZONE Rusty Hearts forum: https://forum.ragezone.com (Rusty Hearts section, RustyHeartenstein release)
 - Community setup guide (Windows / Hyper-V): https://docs.google.com/document/d/1X-fAsj4iDx5t4P9dz17ViR--8V22cvpdhdKV7k0z3hI/edit
-- Download folder linked from the release: https://drive.google.com/drive/u/0/folders/1hCQElZ4qNMPLkCx6xzrU68yai3YN54ek
 
 Download:
 
