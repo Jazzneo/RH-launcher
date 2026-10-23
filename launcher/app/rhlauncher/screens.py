@@ -335,8 +335,8 @@ class SettingsScreen(Screen):
         panel(surf, r, C["panel"], 16)
         p = backend.MEM_PROFILES[backend.memory_resolve(backend.memory_choice())]
         y = ui.text_block(surf, f"Server memory now: SQL Server {p['sql_limit_mb']} MB, game servers up to "
-                                f"{p['game_mem'].upper()}, needs {p['start_gib']} GB free to start. Low fits a Steam "
-                                "Deck; if the server or game crashes, go one step up.",
+                                f"{p['game_mem'].upper()}" + (" (more from swap if needed)" if p['game_swap'] != p['game_mem'] else "")
+                                + f", needs {p['start_gib']} GB free to start. If the server crashes, go one step up.",
                           (r.x + 24, r.y + 18), r.w - 48, 16, C["text"])
         ui.text_block(surf, "Controls: D-pad / stick to move, A to select, B to go back, LB/RB to switch tabs, "
                             "START to play, SELECT to quit. Mouse, touch and keyboard work too.",

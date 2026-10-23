@@ -958,16 +958,17 @@ class App:
                 self.toast("Game closed")
                 if self.settings.get("stop_server_after_game") and not self.quitting:
                     self.stop_server()
-        # memory guard (same rule as the shell launcher: keep 2 GiB free)
+        # memory guard: stop everything before the system runs out (limit from the Server memory setting)
         if self.server.running or self.game_running:
             free = backend.mem_available_gib()
-            if free is not None and free < 2 and not self._low_mem_warned:
+            guard = backend.MEM_PROFILES[backend.memory_resolve(backend.memory_choice())].get("guard_gib", 2)
+            if free is not None and free < guard and not self._low_mem_warned:
                 self._low_mem_warned = True
                 self.log(f"Low memory ({free:.1f} GiB free): stopping game and server")
                 self.stop_server()
-                self.dialog("Stopped to protect your PC", "Less than 2 GiB of memory was left, so the game and "
-                            "server were stopped. Close memory-heavy apps and try again.")
-            elif free is not None and free > 3:
+                self.dialog("Stopped to protect your PC", f"Less than {guard:g} GB of memory was left, so the game "
+                            "and server were stopped. Close memory-heavy apps and try again.")
+            elif free is not None and free > guard + 1:
                 self._low_mem_warned = False
 
     def run(self, fullscreen=None):

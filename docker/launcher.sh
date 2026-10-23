@@ -171,11 +171,12 @@ play() {
   fi
   client_running && fail 'The game is already open. Close it first, or choose "Stop server".'
   start_server
-  local watchdog=
+  local watchdog= guard_kb
+  guard_kb="$(cd "$ROOT/docker" && python3 -c 'import memory_profile as m; print(int(m.load("..")["guard_gib"] * 1048576))' 2>/dev/null || echo 2097152)"
   ( while sleep 2; do
       kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
-      if (( kb < 2097152 )); then
-        echo 'Low memory (<2 GiB free): stopping Rusty Hearts.' >&2
+      if (( kb < guard_kb )); then
+        echo 'Low memory: stopping Rusty Hearts.' >&2
         systemctl --user stop rusty-hearts-client.scope 2>/dev/null || true
         "${COMPOSE[@]}" stop; exit
       fi

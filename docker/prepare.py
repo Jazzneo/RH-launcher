@@ -37,9 +37,10 @@ if not shared.exists():
 # Memory limits for compose.yaml, from the Server memory setting (docker/memory_profile.py).
 import memory_profile
 prof = memory_profile.load(ROOT)
-keep = [l for l in env.read_text().splitlines() if not l.startswith(('RH_SQL_LIMIT_MB=', 'RH_SQL_MEM=', 'RH_API_MEM=', 'RH_GAME_MEM='))]
-keep += [f"RH_SQL_LIMIT_MB={prof['sql_limit_mb']}", f"RH_SQL_MEM={prof['sql_mem']}", f"RH_API_MEM={prof['api_mem']}",
-         f"RH_GAME_MEM={prof['game_mem']}"]
+names = ('sql_mem', 'sql_swap', 'api_mem', 'api_swap', 'game_mem', 'game_swap')
+keep = [l for l in env.read_text().splitlines()
+        if not l.startswith(('RH_SQL_LIMIT_MB=',) + tuple(f'RH_{n.upper()}=' for n in names))]
+keep += [f"RH_SQL_LIMIT_MB={prof['sql_limit_mb']}"] + [f"RH_{n.upper()}={prof[n]}" for n in names]
 new_env = '\n'.join(keep) + '\n'
 if new_env != env.read_text():
     write_private(env, new_env)

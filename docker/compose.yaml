@@ -12,7 +12,7 @@ services:
     volumes:
       - sql-data:/var/opt/mssql
     mem_limit: ${RH_SQL_MEM:-3g}
-    memswap_limit: ${RH_SQL_MEM:-3g}
+    memswap_limit: ${RH_SQL_SWAP:-3g}
     cpus: 2
     pids_limit: 1024
     restart: 'no'
@@ -51,7 +51,7 @@ services:
       LOG_LEVEL: info
       TZ: UTC
     mem_limit: ${RH_API_MEM:-512m}
-    memswap_limit: ${RH_API_MEM:-512m}
+    memswap_limit: ${RH_API_SWAP:-512m}
     cpus: 1
     pids_limit: 128
     restart: 'no'
@@ -75,7 +75,7 @@ services:
       - ./wine-entrypoint.sh:/opt/rh/wine-entrypoint.sh:ro,z
       - wine11-data:/var/lib/rh-wine
     mem_limit: ${RH_GAME_MEM:-8g}
-    memswap_limit: ${RH_GAME_MEM:-8g}
+    memswap_limit: ${RH_GAME_SWAP:-8g}
     cpus: 3
     pids_limit: 1024
     restart: 'no'
