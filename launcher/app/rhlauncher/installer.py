@@ -415,15 +415,23 @@ class Installer:
 
     def client(self):
         cur = backend.load_client_dir()
-        if cur and backend.inspect_client(cur)["ok"]:
-            self.log(f"Game client: {cur}")
-            self.d3dcompiler(cur)
-            return
         arc = self.a.get("client")
+        info = self.a.get("client_info") or {}
+        if cur and backend.inspect_client(cur)["ok"]:
+            inside = os.path.realpath(cur).startswith(os.path.realpath(ROOT) + os.sep)
+            room = free_gib(ROOT) >= info.get("size", 10 * GIB) / GIB + 1
+            if inside or not arc or not room:
+                # A client in this folder, or no client.7z / no room to unpack it: use the one that's set.
+                self.log(f"Game client: {cur}" + ("" if inside or not arc else " (not enough space to unpack "
+                                                                              "client.7z here)"))
+                self.d3dcompiler(cur)
+                return
+            # The client that's set lives in another folder (e.g. another RH Launcher copy). Unpack this
+            # install's own, so it doesn't break when that folder is moved or deleted.
+            self.log(f"Game client set to another folder ({cur}); unpacking client.7z into this one")
         if not arc:
             raise RuntimeError("The game client (client.7z) wasn't found. Download it, or set your game folder "
                                "on the Game Client tab.")
-        info = self.a.get("client_info") or {}
         self._need_space(ROOT, info.get("size", 10 * GIB) / GIB + 1, "the game client")
         self.say("Unpacking the game client (about 10 GB)…")
         self._extract(arc, ROOT)
