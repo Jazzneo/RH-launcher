@@ -167,6 +167,9 @@ class ServerScreen(Screen):
         if not app.podman_ready():
             ws.append(ui.Button("srv_podman", (X0 + 708, Y0, CW - 708, 64), "Turn on Podman", app.setup_podman,
                                 "success", size=19, enabled=idle))
+        elif installer.PODMAN and not srv.other:
+            ws.append(ui.Button("srv_podman", (X0 + 708, Y0, CW - 708, 64), "Podman is on", None, "ghost",
+                                size=19, enabled=False))
         elif srv.other:
             ws.append(ui.Button("srv_other", (X0 + 708, Y0, CW - 708, 64), f"Turn off {backend.OTHER_ENGINE} server",
                                 self.stop_other, "danger", size=18, enabled=idle))
