@@ -71,6 +71,8 @@ services:
       - ../runtime/linux/server:/srv/game:Z
       - ../runtime/linux/windows-dlls:/opt/rh-windows:ro,z
       - ../runtime/linux/windows-components:/opt/rh-components:ro,z
+      # Loaded from here (not baked into the image) so script updates need no rebuild.
+      - ./wine-entrypoint.sh:/opt/rh/wine-entrypoint.sh:ro,z
       - wine11-data:/var/lib/rh-wine
     mem_limit: ${RH_GAME_MEM:-8g}
     memswap_limit: ${RH_GAME_MEM:-8g}

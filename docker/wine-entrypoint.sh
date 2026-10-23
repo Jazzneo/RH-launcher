@@ -8,40 +8,57 @@ xvfb_pid=$!
 cleanup() { wineserver -k || true; kill "$xvfb_pid" 2>/dev/null || true; }
 trap cleanup EXIT
 trap 'exit 143' TERM INT
-WINEDLLOVERRIDES='mscoree,mshtml=' timeout 90 wineboot -u
-system_dir="$WINEPREFIX/drive_c/windows/system32"
-for component in ado msadc oledb; do
-  case "$component" in ado) folder=ADO ;; msadc) folder=MSADC ;; oledb) folder='OLE DB' ;; esac
-  target="$WINEPREFIX/drive_c/Program Files/Common Files/System/$folder"
-  mkdir -p "$target"
-  tar -xf "/opt/rh-components/$component.tar" -C "$target"
-  find "$target" -maxdepth 1 -type f \( -iname '*.dll' -o -iname '*.rll' \) -exec cp -t "$system_dir" {} +
-  if [[ -d "$target/en-US" ]]; then
-    mkdir -p "$system_dir/en-US"
-    cp -a "$target/en-US/." "$system_dir/en-US/"
-  fi
-done
-for dll in sqloledb.dll sqloledb.rll oledb32.dll oledb32r.dll dpapi.dll msdart.dll msdatl3.dll msdaps.dll msdadiag.dll msadce.dll dbnetlib.dll sqlsrv32.dll msvcrt.dll; do
-  if [[ -f "/opt/rh-windows/$dll" ]]; then
-    cp "/opt/rh-windows/$dll" "$WINEPREFIX/drive_c/windows/system32/$dll"
-  fi
-done
-ado_dir="$WINEPREFIX/drive_c/Program Files/Common Files/System/ADO"
-mkdir -p "$ado_dir"
-for file in msado15.dll msadrh15.dll msader15.dll msado28.tlb msado60.tlb; do
-  cp "/opt/rh-windows/$file" "$ado_dir/$file"
-done
-oledb_dir="$WINEPREFIX/drive_c/Program Files/Common Files/System/OLE DB"
-mkdir -p "$oledb_dir"
-cp /opt/rh-windows/oledb32.dll /opt/rh-windows/oledb32r.dll "$oledb_dir/"
+# One-time Wine setup (prefix update, database drivers, COM registration). The prefix lives in the
+# wine11-data volume, so this only has to run again when Wine or the driver files change.
+SETUP_VERSION=1
+setup_marker="$WINEPREFIX/.rh-setup-done"
+fingerprint="$( { echo "$SETUP_VERSION"; wine --version 2>/dev/null; \
+  sha256sum /opt/rh-components/*.tar /opt/rh-windows/* /opt/rh/sqloledb.reg 2>/dev/null || true; } | sha256sum | cut -c1-64 )"
+rh_wine_setup() {
+  WINEDLLOVERRIDES='mscoree,mshtml=' timeout 90 wineboot -u
+  system_dir="$WINEPREFIX/drive_c/windows/system32"
+  for component in ado msadc oledb; do
+    case "$component" in ado) folder=ADO ;; msadc) folder=MSADC ;; oledb) folder='OLE DB' ;; esac
+    target="$WINEPREFIX/drive_c/Program Files/Common Files/System/$folder"
+    mkdir -p "$target"
+    tar -xf "/opt/rh-components/$component.tar" -C "$target"
+    find "$target" -maxdepth 1 -type f \( -iname '*.dll' -o -iname '*.rll' \) -exec cp -t "$system_dir" {} +
+    if [[ -d "$target/en-US" ]]; then
+      mkdir -p "$system_dir/en-US"
+      cp -a "$target/en-US/." "$system_dir/en-US/"
+    fi
+  done
+  for dll in sqloledb.dll sqloledb.rll oledb32.dll oledb32r.dll dpapi.dll msdart.dll msdatl3.dll msdaps.dll msdadiag.dll msadce.dll dbnetlib.dll sqlsrv32.dll msvcrt.dll; do
+    if [[ -f "/opt/rh-windows/$dll" ]]; then
+      cp "/opt/rh-windows/$dll" "$WINEPREFIX/drive_c/windows/system32/$dll"
+    fi
+  done
+  ado_dir="$WINEPREFIX/drive_c/Program Files/Common Files/System/ADO"
+  mkdir -p "$ado_dir"
+  for file in msado15.dll msadrh15.dll msader15.dll msado28.tlb msado60.tlb; do
+    cp "/opt/rh-windows/$file" "$ado_dir/$file"
+  done
+  oledb_dir="$WINEPREFIX/drive_c/Program Files/Common Files/System/OLE DB"
+  mkdir -p "$oledb_dir"
+  cp /opt/rh-windows/oledb32.dll /opt/rh-windows/oledb32r.dll "$oledb_dir/"
+  timeout 30 wine regsvr32 /s 'C:\windows\system32\oledb32.dll'
+  timeout 30 wine regsvr32 /s 'C:\windows\system32\msdaps.dll'
+  timeout 30 wine regsvr32 /s 'C:\windows\system32\msadce.dll'
+  timeout 30 wine regsvr32 /s 'C:\windows\system32\sqloledb.dll'
+  timeout 30 wine regedit /S 'Z:\opt\rh\sqloledb.reg'
+  timeout 30 wine regsvr32 /s 'C:\Program Files\Common Files\System\ADO\msado15.dll'
+  timeout 30 wine regsvr32 /s 'C:\Program Files\Common Files\System\ADO\msadrh15.dll'
+}
+# Native Microsoft database drivers (used by the registration below and by the game servers).
 export WINEDLLOVERRIDES='mscoree,mshtml=;sqloledb,oledb32,msdart,msdatl3,msdaps,msdadiag,msadce,msado15,msadrh15,dbnetlib,sqlsrv32,msvcrt=n,b'
-timeout 30 wine regsvr32 /s 'C:\windows\system32\oledb32.dll'
-timeout 30 wine regsvr32 /s 'C:\windows\system32\msdaps.dll'
-timeout 30 wine regsvr32 /s 'C:\windows\system32\msadce.dll'
-timeout 30 wine regsvr32 /s 'C:\windows\system32\sqloledb.dll'
-timeout 30 wine regedit /S 'Z:\opt\rh\sqloledb.reg'
-timeout 30 wine regsvr32 /s 'C:\Program Files\Common Files\System\ADO\msado15.dll'
-timeout 30 wine regsvr32 /s 'C:\Program Files\Common Files\System\ADO\msadrh15.dll'
+if [[ -f "$setup_marker" && -f "$WINEPREFIX/system.reg" && "$(cat "$setup_marker")" == "$fingerprint" ]]; then
+  echo 'Wine setup already done; skipping it.'
+else
+  echo 'Setting up Wine (first start, or Wine/drivers changed)...'
+  rm -f "$setup_marker"
+  rh_wine_setup
+  echo "$fingerprint" > "$setup_marker"
+fi
 python3 /opt/rh/configure-server.py
 # Probe is intentionally before the game processes: do not start a broken backend.
 rm -f /tmp/rh-probe-result.txt /tmp/rh-ready
