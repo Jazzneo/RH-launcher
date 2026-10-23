@@ -47,10 +47,13 @@ menu() {
 # ---------- state ----------
 running_services() { "${COMPOSE[@]}" ps --services --filter status=running 2>/dev/null; }
 # All services use host networking, so check the real ports from here.
+# Network play: the game servers may listen on this PC's network address instead of 127.0.0.1.
+public_ip() { (cd "$ROOT/docker" && python3 -c 'import network_conf as n; print(n.load("..")["public_ip"])' 2>/dev/null) || echo 127.0.0.1; }
 ports_up() {
-  local port
+  local port pub; pub="$(public_ip)"
   for port in 3000 18070 50001 50006 50016; do
-    timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port" 2>/dev/null || return 1
+    timeout 2 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port" 2>/dev/null ||
+      timeout 2 bash -c "exec 3<>/dev/tcp/$pub/$port" 2>/dev/null || return 1
   done
 }
 # /tmp/rh-ready survives a container stop/start, so never trust it alone.
@@ -231,9 +234,17 @@ server_start_only() {
 }
 
 client_only() {
-  server_ready || fail 'The server is not running. Start it first.'
   client_running && fail 'The game is already open.'
-  export RH_API_URL=http://127.0.0.1:3000
+  local join; join="$(cd "$ROOT/docker" && python3 -c 'import network_conf as n; d=n.load(".."); print(d["join_ip"] if d["mode"] == "join" else "")' 2>/dev/null)"
+  if [[ -n "$join" ]]; then
+    # Network play: the server runs on another PC.
+    timeout 3 bash -c "exec 3<>/dev/tcp/$join/3000" 2>/dev/null ||
+      fail "The server on $join isn't reachable. Turn it on there (with Network play: Host) and try again."
+    export RH_API_URL="http://$join:3000"
+  else
+    server_ready || fail 'The server is not running. Start it first.'
+    export RH_API_URL=http://127.0.0.1:3000
+  fi
   say 'Launching game.'
   systemd-run --user --scope --unit=rusty-hearts-client --quiet \
     -p MemoryMax=2G -p MemorySwapMax=0 -p TasksMax=256 -- "$ROOT/tools/run-client.sh"

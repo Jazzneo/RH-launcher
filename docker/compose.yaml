@@ -29,7 +29,7 @@ services:
     network_mode: host
     environment:
       NODE_OPTIONS: --max-old-space-size=256
-      API_LISTEN_HOST: 127.0.0.1
+      API_LISTEN_HOST: ${RH_API_HOST:-127.0.0.1}
       API_LISTEN_PORT: 3000
       API_LOCAL_LISTEN_HOST: 127.0.0.1
       API_USA_PORT: 18070
@@ -42,7 +42,7 @@ services:
       DB_USER: sa
       DB_PASSWORD: ${RH_SQL_PASSWORD}
       DB_ENCRYPT: 'false'
-      GATESERVER_IP: 127.0.0.1
+      GATESERVER_IP: ${RH_GATE_IP:-127.0.0.1}
       GATESERVER_PORT: 50001
       SERVER_ID: 10101
       SMTP_HOST: 127.0.0.1
@@ -67,6 +67,7 @@ services:
       RH_SQL_PASSWORD: ${RH_SQL_PASSWORD}
       WINEPREFIX: /var/lib/rh-wine
       WINEDEBUG: ${RH_WINEDEBUG:--all}
+      RH_PUBLIC_IP: ${RH_GATE_IP:-127.0.0.1}
     volumes:
       - ../runtime/linux/server:/srv/game:Z
       - ../runtime/linux/windows-dlls:/opt/rh-windows:ro,z

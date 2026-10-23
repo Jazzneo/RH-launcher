@@ -84,11 +84,17 @@ manager_pid=$!
 ready=false
 for ((i=0;i<180;i++)); do
   if python3 - <<'PY'
-import socket
-try:
-    for port in (50001,50006,50016):
-        with socket.create_connection(('127.0.0.1',port),timeout=1): pass
-except OSError:
+import os, socket
+def up(port):
+    # In network play the servers may listen on the PC's network address instead of 127.0.0.1.
+    for host in ('127.0.0.1', os.environ.get('RH_PUBLIC_IP') or '127.0.0.1'):
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return True
+        except OSError:
+            pass
+    return False
+if not all(up(p) for p in (50001, 50006, 50016)):
     raise SystemExit(1)
 PY
   then ready=true; break; fi

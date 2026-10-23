@@ -70,5 +70,8 @@ import memory_profile
 limit = memory_profile.load(ROOT)['sql_limit_mb']
 sql(f"SET NOCOUNT ON; EXEC sp_configure 'show advanced options', 1; RECONFIGURE; "
     f"EXEC sp_configure 'max server memory (MB)', {max(512, limit - 256)}; RECONFIGURE;")
-sql("UPDATE RustyHearts_Auth.dbo.ServerOption SET PublicAddress='127.0.0.1' WHERE PublicAddress<>''; UPDATE RustyHearts_Auth.dbo.ServerOption SET PrivateAddress='127.0.0.1' WHERE PrivateAddress<>'';")
+import network_conf
+public_ip = network_conf.load(ROOT)['public_ip']
+assert all(c.isdigit() or c == '.' for c in public_ip)
+sql(f"UPDATE RustyHearts_Auth.dbo.ServerOption SET PublicAddress='{public_ip}' WHERE PublicAddress<>''; UPDATE RustyHearts_Auth.dbo.ServerOption SET PrivateAddress='127.0.0.1' WHERE PrivateAddress<>'';")
 print('Database restore/configuration finished. Existing databases were preserved.')

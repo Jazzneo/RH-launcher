@@ -34,7 +34,20 @@ yourself from the RaGEZONE community release. The launcher finds those downloads
 - **Steam with Proton Experimental** (or GE-Proton).
 - About **60 GB free disk space** while installing, about 20 GB afterwards.
 
-## Steam Deck
+## Play on a Steam Deck with your PC's server (recommended)
+
+The easiest way to play on a Steam Deck (or a second PC): your PC runs the server, the Deck only runs the
+game. The Deck then needs no Docker or Podman and far less memory.
+
+1. **On the PC:** Settings → **Network play…** → **Host**, press **Open firewall ports** (asks for your
+   password), Save, and turn the server on. The window shows the address to use, e.g. `192.168.1.20`.
+2. **On the Deck:** install RH Launcher, Settings → **Network play…** → **Join**, type that address, press
+   **Test connection**, Save. Setup then only installs the game client.
+3. Create accounts and add Zen on the PC; log in on the Deck with them. Keep the PC on while you play.
+
+Only devices on your home network can connect; don't forward these ports on your router.
+
+## Steam Deck (everything on the Deck)
 
 Everything (server and game) can run on the Deck itself. SteamOS has no Docker, but it has Podman built in
 (SteamOS 3.5 and later); RH Launcher uses that automatically.

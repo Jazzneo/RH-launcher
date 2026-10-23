@@ -21,9 +21,9 @@ def _env():
     return e
 
 
-def port_open(port, timeout=0.4):
+def port_open(port, timeout=0.4, host="127.0.0.1"):
     try:
-        with socket.create_connection(("127.0.0.1", port), timeout=timeout):
+        with socket.create_connection((host, port), timeout=timeout):
             return True
     except OSError:
         return False
@@ -115,6 +115,18 @@ class ServerState:
         return "Offline"
 
     def _poll(self):
+        net = net_load()
+        if net["mode"] == "join":
+            # Playing on another PC's server: just check that it answers.
+            ip = net["join_ip"]
+            ports = {name: bool(ip) and port_open(p, 1.5, ip) for name, p in PORTS.items() if p in (3000, 50001,
+                                                                                                    50006, 50016)}
+            client = subprocess.run(["systemctl", "--user", "is-active", "--quiet", CLIENT_UNIT]).returncode == 0
+            with self._lock:
+                self.running, self.ports, self.docker_ok, self.other = [], ports, True, []
+                self.ready = bool(ports) and all(ports.values())
+                self.client, self.checked = client, time.time()
+            return
         try:
             r = subprocess.run(["bash", SERVER_SCRIPT, "status-json"], capture_output=True, text=True,
                                timeout=40, env=_env())
@@ -124,7 +136,8 @@ class ServerState:
             docker_ok = r.returncode == 0 and bool(m)
         except Exception:
             running, docker_ok, data = [], False, {}
-        ports = {name: port_open(p) for name, p in PORTS.items()}
+        pub = net["public_ip"]
+        ports = {name: port_open(p) or (pub != "127.0.0.1" and port_open(p, host=pub)) for name, p in PORTS.items()}
         client = subprocess.run(["systemctl", "--user", "is-active", "--quiet", CLIENT_UNIT]).returncode == 0
         other = other_engine_running()
         with self._lock:
@@ -704,3 +717,78 @@ def memory_resolve(name):
 
 def memory_save(name):
     _mp.save(ROOT, name)
+
+
+# ------------------------------------------------------------ network play
+_nspec = _ilu.spec_from_file_location("rh_network_conf", os.path.join(ROOT, "docker", "network_conf.py"))
+_nc = _ilu.module_from_spec(_nspec)
+_nspec.loader.exec_module(_nc)
+NET_TCP_PORTS, NET_UDP_PORTS = _nc.CLIENT_TCP_PORTS, _nc.CLIENT_UDP_PORTS
+IP_RE = re.compile(r"^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$")
+
+
+def net_load():
+    return _nc.load(ROOT)
+
+
+def net_save(mode, host_ip_fixed="", join_ip=""):
+    _nc.save(ROOT, mode, host_ip_fixed, join_ip)
+
+
+def lan_ip():
+    return _nc.lan_ip()
+
+
+def test_server(ip):
+    """(ok, message) for a server on another PC."""
+    if not IP_RE.match(ip or ""):
+        return False, "That doesn't look like an address (example: 192.168.1.20)."
+    if not port_open(3000, 3, ip):
+        return False, (f"Nothing answers on {ip}. On the PC: Settings > Network play > Host, turn the server on, "
+                       "and open the firewall ports.")
+    missing = [p for p in (50001, 50006, 50016) if not port_open(p, 3, ip)]
+    if missing:
+        return False, (f"The login server on {ip} answers, but the game servers don't yet (ports "
+                       f"{', '.join(map(str, missing))}). Wait until the PC says the server is online, or check its "
+                       "firewall.")
+    return True, f"The server on {ip} is online."
+
+
+def firewall_state():
+    """('none' | 'open' | 'closed', detail) for firewalld (Bazzite / Fedora)."""
+    fc = shutil.which("firewall-cmd")
+    if not fc:
+        return "none", "No firewall tool found (nothing to open)"
+    try:
+        if subprocess.run([fc, "--state"], capture_output=True, timeout=10).returncode:
+            return "none", "The firewall isn't running"
+        closed = []
+        for p in NET_TCP_PORTS:
+            if subprocess.run([fc, "--query-port", f"{p}/tcp"], capture_output=True, timeout=10).returncode:
+                closed.append(f"{p}/tcp")
+        for p in NET_UDP_PORTS:
+            if subprocess.run([fc, "--query-port", f"{p}/udp"], capture_output=True, timeout=10).returncode:
+                closed.append(f"{p}/udp")
+    except Exception as e:
+        return "closed", f"Couldn't check the firewall: {e}"
+    return ("open", "Game ports are open") if not closed else ("closed", f"{len(closed)} game ports are closed")
+
+
+def open_firewall():
+    """Open the game ports in firewalld (asks for your password through the system prompt)."""
+    fc = shutil.which("firewall-cmd")
+    pk = shutil.which("pkexec")
+    if not fc:
+        return "No firewall tool found, so nothing needs opening."
+    if not pk:
+        raise RuntimeError("pkexec is missing. Run in a terminal: sudo firewall-cmd --permanent " +
+                           " ".join(f"--add-port={p}/tcp" for p in NET_TCP_PORTS) + " " +
+                           " ".join(f"--add-port={p}/udp" for p in NET_UDP_PORTS) + " && sudo firewall-cmd --reload")
+    args = [f"--add-port={p}/tcp" for p in NET_TCP_PORTS] + [f"--add-port={p}/udp" for p in NET_UDP_PORTS]
+    r = subprocess.run([pk, fc, "--permanent"] + args, capture_output=True, text=True, timeout=300)
+    if r.returncode:
+        raise RuntimeError("The firewall change was cancelled or failed: " + (r.stderr or r.stdout).strip()[-200:])
+    r = subprocess.run([pk, fc] + args, capture_output=True, text=True, timeout=300)   # live, without a reload
+    if r.returncode:
+        raise RuntimeError("Saved, but couldn't apply it right away: " + (r.stderr or r.stdout).strip()[-200:])
+    return "Firewall ports opened."

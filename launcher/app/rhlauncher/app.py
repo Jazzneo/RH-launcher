@@ -507,10 +507,26 @@ class App:
             self.call_soon(finish)
         threading.Thread(target=worker, daemon=True).start()
 
+    def joining(self):
+        """Network play 'join': the server runs on another PC (cached briefly)."""
+        c = getattr(self, "_net_cache", None)
+        if not c or time.time() - c[1] > 3:
+            self._net_cache = c = (backend.net_load(), time.time())
+        return c[0] if c[0]["mode"] == "join" else None
+
     def start_server(self, then=None):
         if self.server.ready:
             if then:
                 then()
+            return
+        net = self.joining()
+        if net:
+            ip = net["join_ip"] or "(not set)"
+            self.server.refresh_soon()
+            self.dialog("PC server not reachable",
+                        f"This device plays on the server at {ip}, and it doesn't answer yet.\n\nOn that PC: open "
+                        "RH Launcher, set Settings > Network play to Host, and turn the server on. Then try again.",
+                        [("Close", None, "ghost"), ("Network play…", self.open_network, "primary")])
             return
         if not self.podman_ready():
             self.setup_podman(then=lambda: self.start_server(then=then))
@@ -567,6 +583,10 @@ class App:
     def stop_server(self, then=None):
         if self.game_running:
             backend.stop_client()
+        if self.joining():
+            if then:
+                then()
+            return
 
         def done(ok, lines):
             self.toast("Server stopped. Your characters are saved." if ok else "Stopping reported a problem",
@@ -575,7 +595,17 @@ class App:
                 then()
         self.run_job("Stopping server", ["server-stop"], "Stopping", done, cancellable=False)
 
+    def open_network(self):
+        from . import screens
+        self.open_modal(screens.NetworkDialog(self))
+
     def toggle_server(self):
+        net = self.joining()
+        if net:
+            self.dialog("The server runs on your PC", f"This device plays on the server at {net['join_ip']}. "
+                        "Turn it on or off in RH Launcher on that PC.",
+                        [("Close", None, "ghost"), ("Network play…", self.open_network, "primary")])
+            return
         if self.server.running or self.server.ready:
             self.stop_server()
         else:
@@ -592,7 +622,7 @@ class App:
         if self.game_running:
             self.toast("The game is already running.")
             return
-        if self.setup_done is False:
+        if self.setup_done is False and not self.joining():
             self.go("setup")
             self.toast("Rusty Hearts isn't installed yet: press Install everything.", "warn", 6)
             return

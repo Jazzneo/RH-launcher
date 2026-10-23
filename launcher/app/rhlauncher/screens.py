@@ -308,11 +308,13 @@ class SettingsScreen(Screen):
                       sub="Recommended: the server uses a lot of memory"),
             ui.Selector("set_fs", (X0, Y0 + 172, CW, 76), "Launcher window (applies next start)", fs_lbl, cur,
                         lambda i: s.set("fullscreen", fs_opts[i])),
-            ui.Button("set_steam", (X0, Y0 + 270, 300, 64), "Add to Steam", add_steam, "primary", size=21),
-            ui.Button("set_menu", (X0 + 316, Y0 + 270, 320, 64), "Add to applications menu", menu, "ghost", size=20),
-            ui.Button("set_autologin", (X0 + 652, Y0 + 270, 300, 64), "Auto-login…",
-                      lambda: app.open_modal(AutoLoginDialog(app)), "ghost", size=20,
+            ui.Button("set_steam", (X0, Y0 + 270, 220, 64), "Add to Steam", add_steam, "primary", size=20),
+            ui.Button("set_menu", (X0 + 236, Y0 + 270, 250, 64), "Add to app menu", menu, "ghost", size=19),
+            ui.Button("set_autologin", (X0 + 502, Y0 + 270, 220, 64), "Auto-login…",
+                      lambda: app.open_modal(AutoLoginDialog(app)), "ghost", size=19,
                       sub=("On" if backend.load_autologin()["enabled"] else "Off")),
+            ui.Button("set_network", (X0 + 738, Y0 + 270, CW - 738, 64), "Network play…", app.open_network,
+                      "ghost", size=19, sub=NetworkDialog.MODE_SHORT[backend.net_load()["mode"]]),
             ui.Selector("set_memory", (X0, Y0 + 356, CW, 76), "Server memory (applies next server start)",
                         [self.mem_label(k) for k in backend.MEM_CHOICES], backend.MEM_CHOICES.index(backend.memory_choice()),
                         self.set_memory),
@@ -411,6 +413,8 @@ class AccountsScreen(Screen):
 
     def build(self):
         app = self.app
+        if app.joining():
+            return [ui.Button("acc_net", (X0, Y0 + 150, 320, 64), "Network play…", app.open_network, "ghost")]
         if app.server.ready and not self.loading and time.time() - self.loaded_at > 30:
             self.reload()
         fw = 460
@@ -509,6 +513,15 @@ class AccountsScreen(Screen):
                        [("Cancel", None, "ghost"), ("Turn on", lambda: app.start_server(), "primary")])
 
     def draw(self, surf):
+        net = self.app.joining()
+        if net:
+            r = pygame.Rect(X0, Y0, CW, 130)
+            panel(surf, r, C["panel"], 16)
+            ui.text_block(surf, f"This device plays on the server at {net['join_ip']}. Accounts and Zen are stored "
+                                "there: create accounts and add Zen in RH Launcher on that PC, then log in here "
+                                "with the same username and password.", (r.x + 22, r.y + 20), r.w - 44, 18,
+                          C["muted"])
+            return
         text(surf, "Create an account", (X0, Y0 + 4), 17, C["muted"], True)
         text(surf, f"Accounts on this server ({len(self.accounts)})", (X0 + 484, Y0 + 4), 17, C["muted"], True)
         r = pygame.Rect(X0, Y0 + 462, CW, CH - 470)
@@ -637,6 +650,8 @@ class SetupScreen(Screen):
         self.found, self.searched = {}, False
 
     def badge(self):
+        if self.st and self.app.joining():
+            return None if self.st["client"] else C["yellow"]
         return None if (self.st and installer.installed(self.st)) else C["yellow"]
 
     # background work ------------------------------------------------------------------
@@ -688,6 +703,9 @@ class SetupScreen(Screen):
         """Which archives are still needed, given what is already installed."""
         st = self.st or {}
         need = []
+        if self.app.joining():          # network play: only the game client is needed on this device
+            cur = backend.load_client_dir()
+            return [] if cur and backend.inspect_client(cur)["ok"] else ["client"]
         if not st.get("server"):
             need.append("server")
         if not st.get("drivers") and "vhdx" not in self.found:
@@ -709,6 +727,9 @@ class SetupScreen(Screen):
                        "\n\nDownload them (button 'Get the game files'), then press 'Look again'. If you already "
                        "have the game client somewhere, set it on the Game Client tab instead.")
             return
+        if app.joining():
+            self.run_install(only=["client"])
+            return
         if st["docker"] not in ("ok", "podman-setup"):
             self.docker_help()
             return
@@ -721,7 +742,7 @@ class SetupScreen(Screen):
             return
         self.run_install()
 
-    def run_install(self):
+    def run_install(self, only=None):
         app = self.app
         log = []
         modal = Progress(app, "Installing Rusty Hearts", log=log)
@@ -736,7 +757,7 @@ class SetupScreen(Screen):
         def worker():
             err = None
             try:
-                inst.run_all()
+                inst.run_all(only=only)
             except installer.Cancelled:
                 err = "cancelled"
             except Exception as e:
@@ -801,7 +822,7 @@ class SetupScreen(Screen):
             self.searched = True
             self.search(quiet=True)
         st = self.st
-        done = bool(st and installer.installed(st))
+        done = bool(st and (st["client"] if app.joining() else installer.installed(st)))
         ws = [ui.Button("su_get", (X0, Y0, 330, 60), "Get the game files", self.open_downloads, "ghost", size=20),
               ui.Button("su_look", (X0 + 346, Y0, 230, 60), "Look again", lambda: self.search(), "ghost", size=20),
               ui.Button("su_browse", (X0 + 592, Y0, 250, 60), "Pick a folder…",
@@ -879,7 +900,10 @@ class SetupScreen(Screen):
                       f"{st['free']:.0f} GB free" + (f", setup needs ~{need_gb} GB" if need_gb else ""), colw - 24)
         else:
             text(surf, "Checking…", (r.x + 18, y), 17, C["dim"])
-        msg = ("Everything is installed." if st and installer.installed(st) else
+        net = self.app.joining()
+        msg = (f"Network play: this device plays on the server at {net['join_ip']}, so only the game client is "
+               "installed here." if net else
+               "Everything is installed." if st and installer.installed(st) else
                "Press Install: it unpacks your files and sets up the server. The first time takes 20-40 minutes.")
         dx = 320 if st and st["docker"] != "ok" else 0
         ui.text_block(surf, msg, (X0 + dx, Y0 + CH - 92), CW - 400 - dx, 17, C["muted"])
@@ -947,3 +971,118 @@ class AutoLoginDialog(Modal):
                             "only while the game window is in front. If it types too early, pick a longer wait. "
                             "The password is kept in a file on this PC that only your user can read.",
                       (r.x + 36, r.y + 336), r.w - 72, 16, C["muted"])
+
+
+# ============================================================ NETWORK PLAY
+class NetworkDialog(Modal):
+    """Play together on the home network: host the server on this PC, or join another PC's server."""
+    width, height = 960, 660
+    hints = [("A", "Select"), ("B", "Close")]
+    MODES = ["local", "host", "join"]
+    MODE_SHORT = {"local": "Off", "host": "Hosting", "join": "Joining a PC"}
+    MODE_LABELS = ["Off: only this PC plays", "Host: other devices play on this PC's server",
+                   "Join: play on another PC's server (Steam Deck)"]
+
+    def __init__(self, app):
+        super().__init__(app)
+        d = backend.net_load()
+        self.mode_i = self.MODES.index(d["mode"])
+        self.join_ip = d["join_ip"]
+        self.host_fixed = d["host_ip_fixed"]
+        self.lan = backend.lan_ip()
+        self.fw, self.fw_detail, self.test = None, "", None
+        self.focus_key = "net_mode"
+        self._check_firewall()
+
+    def _check_firewall(self):
+        def work():
+            st, detail = backend.firewall_state()
+            self.app.call_soon(lambda: (setattr(self, "fw", st), setattr(self, "fw_detail", detail)))
+        threading.Thread(target=work, daemon=True).start()
+
+    @property
+    def mode(self):
+        return self.MODES[self.mode_i]
+
+    def save(self):
+        if self.mode == "join" and not backend.IP_RE.match(self.join_ip or ""):
+            self.app.toast("Enter the PC's address first (example: 192.168.1.20)", "warn")
+            return
+        before = backend.net_load()["mode"]
+        backend.net_save(self.mode, self.host_fixed, self.join_ip)
+        self.app._net_cache = None
+        self.app.close_modal(self)
+        self.app.server.refresh_soon()
+        if self.mode == "join":
+            self.app.toast(f"Playing on the server at {self.join_ip}", "ok", 6)
+            if self.app.server.running:
+                self.app.toast("This device's own server is still on: turn it off on the Server tab", "info", 8)
+        elif self.mode != before and (self.app.server.running or self.app.server.ready):
+            self.app.dialog("Restart the server", "The new network setting is used the next time the server "
+                            "starts. Restart it now?", [("Later", None, "ghost"),
+                                                        ("Restart", lambda: self.app.stop_server(
+                                                            then=lambda: self.app.start_server()), "primary")])
+        else:
+            self.app.toast("Network play saved", "ok")
+
+    def open_fw(self):
+        def done(res, err):
+            if err:
+                self.app.dialog("Firewall", str(err))
+            else:
+                self.app.toast(res, "ok")
+            self._check_firewall()
+        self.app.run_task("Opening the game ports (enter your password)", lambda p: backend.open_firewall(), done)
+
+    def run_test(self):
+        ip = self.join_ip.strip()
+        self.test = ("…", None)
+
+        def work():
+            ok, msg = backend.test_server(ip)
+            self.app.call_soon(lambda: setattr(self, "test", (msg, ok)))
+        threading.Thread(target=work, daemon=True).start()
+
+    def build(self):
+        r = self.rect
+        x, w = r.x + 36, r.w - 72
+        ws = [ui.Selector("net_mode", (x, r.y + 90, w, 76), "Network play", self.MODE_LABELS, self.mode_i,
+                          lambda i: setattr(self, "mode_i", i))]
+        if self.mode == "host":
+            ws.append(ui.Button("net_fw", (x, r.y + 330, 340, 60), "Open firewall ports", self.open_fw,
+                                "success" if self.fw == "closed" else "ghost", size=19,
+                                enabled=self.fw in ("closed",)))
+        elif self.mode == "join":
+            ws.append(ui.TextField("net_ip", (x, r.y + 190, w // 2, 70), "PC address", self.join_ip,
+                                   lambda v: setattr(self, "join_ip", v.strip()), placeholder="e.g. 192.168.1.20"))
+            ws.append(ui.Button("net_test", (x + w // 2 + 16, r.y + 196, 260, 60), "Test connection", self.run_test,
+                                "ghost", size=19))
+        ws += [ui.Button("net_cancel", (r.right - 36 - 200 - 16 - 200, r.bottom - 84, 200, 58), "Cancel",
+                         lambda: self.app.close_modal(self), "ghost"),
+               ui.Button("net_save", (r.right - 36 - 200, r.bottom - 84, 200, 58), "Save", self.save, "primary")]
+        return ws
+
+    def draw_body(self, surf):
+        r = self.rect
+        x, w = r.x + 36, r.w - 72
+        text(surf, "Network play", (x, r.y + 30), 28, C["text"], True)
+        if self.mode == "local":
+            ui.text_block(surf, "Everything stays on this PC: the server only accepts this PC's own game.",
+                          (x, r.y + 196), w, 18, C["muted"])
+        elif self.mode == "host":
+            ip = self.host_fixed or self.lan or "unknown"
+            text(surf, "Other devices connect to", (x, r.y + 190), 16, C["muted"], True)
+            text(surf, ip, (x, r.y + 214), 34, C["gold"], True)
+            check_row(surf, x + 400, r.y + 200, True if self.fw in ("open", "none") else (None if self.fw is None
+                      else False), "Firewall", self.fw_detail or "Checking…", w - 400)
+            ui.text_block(surf, "On the Steam Deck: RH Launcher > Settings > Network play > Join, and type this "
+                                "address. Keep this PC on with the server running while you play there. Accounts "
+                                "and Zen are made here. Only devices on your home network can connect.",
+                          (x, r.y + 404), w, 16, C["muted"])
+        else:
+            if self.test:
+                msg, ok = self.test
+                check_row(surf, x, r.y + 280, ok, "Connection", msg, w)
+            ui.text_block(surf, "Type the address shown on the PC (Settings > Network play > Host). This device "
+                                "then only runs the game: no server, no Docker or Podman, much less memory. "
+                                "Setup only needs the game client here.", (x, r.y + 404), w, 16, C["muted"])

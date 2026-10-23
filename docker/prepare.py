@@ -36,11 +36,17 @@ if not shared.exists():
 
 # Memory limits for compose.yaml, from the Server memory setting (docker/memory_profile.py).
 import memory_profile
+# Network play: the address the servers announce to players (internal traffic stays on 127.0.0.1).
+import network_conf
+net = network_conf.load(ROOT)
+public_ip = net['public_ip']
 prof = memory_profile.load(ROOT)
 names = ('sql_mem', 'sql_swap', 'api_mem', 'api_swap', 'game_mem', 'game_swap')
 keep = [l for l in env.read_text().splitlines()
         if not l.startswith(('RH_SQL_LIMIT_MB=',) + tuple(f'RH_{n.upper()}=' for n in names))]
 keep += [f"RH_SQL_LIMIT_MB={prof['sql_limit_mb']}"] + [f"RH_{n.upper()}={prof[n]}" for n in names]
+keep = [l for l in keep if not l.startswith(('RH_API_HOST=', 'RH_GATE_IP='))]
+keep += [f"RH_API_HOST={'0.0.0.0' if net['mode'] == 'host' else '127.0.0.1'}", f"RH_GATE_IP={public_ip}"]
 new_env = '\n'.join(keep) + '\n'
 if new_env != env.read_text():
     write_private(env, new_env)
@@ -56,7 +62,7 @@ for path in templates.glob('*.xml'):
     text = path.read_text(encoding='utf-8-sig')
     if not any(key in text for key in ('PRIVATE_IP', 'PUBLIC_IP', 'SQL_DB_')):
         continue
-    for key, value in {'SQL_DB_PASSWORD': password, 'SQL_DB_USER': 'sa', 'SQL_DB_SERVER': '127.0.0.1,1433', 'PRIVATE_IP': '127.0.0.1', 'PUBLIC_IP': '127.0.0.1', 'DB_SERVER': '127.0.0.1,1433', 'DB_USER': 'sa', 'DB_PASSWD': password}.items():
+    for key, value in {'SQL_DB_PASSWORD': password, 'SQL_DB_USER': 'sa', 'SQL_DB_SERVER': '127.0.0.1,1433', 'PRIVATE_IP': '127.0.0.1', 'PUBLIC_IP': public_ip, 'DB_SERVER': '127.0.0.1,1433', 'DB_USER': 'sa', 'DB_PASSWD': password}.items():
         text = text.replace(key, value)
     (server / 'Option' / path.name).write_text(text)
 service = server / 'Option/service_control.xml'
