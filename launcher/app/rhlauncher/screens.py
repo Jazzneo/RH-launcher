@@ -686,9 +686,12 @@ class SetupScreen(Screen):
         if st["docker"] not in ("ok", "podman-setup"):
             self.docker_help()
             return
-        if st["mem"] and st["mem"] < 13:      # a 16 GB Steam Deck reports about 14.5 GB
-            app.dialog("Not enough memory", f"This PC has {st['mem']:.0f} GB of RAM. The server and the game need "
-                       "16 GB or more to run.")
+        if st["mem"] and st["mem"] < 13:
+            app.dialog("Low memory", f"This system reports {st['mem']:.1f} GB of usable memory. A 16 GB Steam Deck "
+                       "normally reports about 14.5 GB; less usually means more memory is set aside for graphics "
+                       "(UMA frame buffer in the BIOS - 1 GB is best here).\n\nInstalling works either way. "
+                       "Playing may run out of memory; the launcher then stops the server and game safely.",
+                       [("Cancel", None, "ghost"), ("Install anyway", self.run_install, "primary")])
             return
         self.run_install()
 
@@ -839,7 +842,7 @@ class SetupScreen(Screen):
             check_row(surf, r.x + 16, y, bool(p), "Proton", os.path.basename(os.path.dirname(p)) if p else
                       "Get Proton Experimental in Steam", colw - 24)
             y += 62
-            check_row(surf, r.x + 16, y, st["mem"] >= 13 or None, "Memory", f"{st['mem']:.0f} GB (16 GB needed)",
+            check_row(surf, r.x + 16, y, st["mem"] >= 13 or None, "Memory", f"{st['mem']:.1f} GB usable (16 GB PC/Deck)",
                       colw - 24)
             y += 62
             need_gb = (0 if st["server"] else 3) + (0 if st["client"] else 10) + (0 if st["drivers"] else 45)
