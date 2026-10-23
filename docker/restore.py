@@ -9,15 +9,30 @@ ROOT = Path(__file__).resolve().parent.parent
 COMPOSE = ['docker', 'compose', '-f', str(ROOT / 'docker/compose.yaml')]
 password = next(x.split('=', 1)[1] for x in (ROOT / 'docker/.env').read_text().splitlines() if x.startswith('RH_SQL_PASSWORD='))
 
+def ping():
+    """SELECT 1 with sqlcmd's error text captured (to tell 'not up yet' from 'wrong password')."""
+    env = dict(os.environ, SQLCMDPASSWORD=password)
+    return subprocess.run(COMPOSE + ['exec', '-T', '-e', 'SQLCMDPASSWORD', 'sql', '/opt/mssql-tools18/bin/sqlcmd', '-S', '127.0.0.1', '-U', 'sa', '-C', '-b', '-Q', 'SELECT 1;'], env=env, text=True, capture_output=True)
+
+
 def sql(query):
     env = dict(os.environ, SQLCMDPASSWORD=password)
     return subprocess.check_output(COMPOSE + ['exec', '-T', '-e', 'SQLCMDPASSWORD', 'sql', '/opt/mssql-tools18/bin/sqlcmd', '-S', '127.0.0.1', '-U', 'sa', '-C', '-b', '-W', '-h', '-1', '-s', '|', '-Q', query], env=env, text=True)
 
+import sys
+denied = 0
 for i in range(60):
-    try:
-        sql('SET NOCOUNT ON; SELECT 1;')
+    r = ping()
+    if r.returncode == 0:
         break
-    except subprocess.CalledProcessError:
+    else:
+        if "Login failed for user 'sa'" in (r.stdout or '') + (r.stderr or ''):
+            denied += 1
+            if denied >= 4:   # SQL Server is up but refuses this folder's password
+                print("ERROR: The database refused this folder's password. It was created by another "
+                      "RH Launcher folder: copy docker/.env from that folder into this one's docker/ "
+                      "folder, then start again.", file=sys.stderr)
+                sys.exit(1)
         time.sleep(5)
 else:
     raise SystemExit('SQL Server did not become ready.')

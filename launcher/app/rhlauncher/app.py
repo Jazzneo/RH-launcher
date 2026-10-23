@@ -472,7 +472,11 @@ class App:
                 if then:
                     then()
             else:
-                err = next((l.replace("ERROR: ", "") for l in reversed(lines) if l.startswith("ERROR")), None)
+                errs = []
+                for l in lines:
+                    if l.startswith("ERROR") and l.replace("ERROR: ", "") not in errs:
+                        errs.append(l.replace("ERROR: ", ""))
+                err = "\n\n".join(errs[:3]) or None
                 self.dialog("The server didn't start",
                             (err or "Startup stopped or was cancelled.") +
                             "\n\nDetails are in the Server tab's activity log and in the logs folder.")

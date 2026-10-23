@@ -11,10 +11,28 @@ region = os.environ.get('RH_REGION', 'usa')
 if region not in {'usa', 'jpn'}:
     raise SystemExit('RH_REGION must be usa or jpn.')
 env = ROOT / 'docker/.env'
-if not env.exists():
-    fd = os.open(env, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+# The database lives in a Docker volume shared by every RH Launcher folder on this PC
+# (rusty-hearts-offline_sql-data), and it only accepts the password it was created with.
+# So the password is kept once per user, and every copy of the launcher uses the same one.
+shared = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') / 'rh-launcher' / 'sql.env'
+
+
+def write_private(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + '.tmp')
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, 'w') as f:
-        f.write('RH_SQL_PASSWORD=Rh9!' + secrets.token_urlsafe(24) + '\n')
+        f.write(text)
+    os.replace(tmp, path)
+
+
+if not env.exists():
+    if shared.exists():
+        write_private(env, shared.read_text())
+    else:
+        write_private(env, 'RH_SQL_PASSWORD=Rh9!' + secrets.token_urlsafe(24) + '\n')
+if not shared.exists():
+    write_private(shared, env.read_text())
 password = next(line.split('=', 1)[1] for line in env.read_text().splitlines() if line.startswith('RH_SQL_PASSWORD='))
 server = ROOT / 'runtime/linux/server'
 if not server.exists():
