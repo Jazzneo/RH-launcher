@@ -40,6 +40,51 @@ def mem_available_gib():
     return None
 
 
+# ------------------------------------------- the other container engine
+# On a PC with both Docker and Podman (Bazzite), a server started by one engine keeps its ports busy for
+# the other. This finds and stops RH containers of the engine the launcher is NOT using.
+OTHER_ENGINE = "Docker" if os.environ.get("RH_PODMAN") == "1" else "Podman"
+
+
+def _other_engine_cmd():
+    if OTHER_ENGINE == "Podman":
+        return shutil.which("podman")
+    shim = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "..", "runtime", "podman-shim")
+    shim = os.path.realpath(shim)
+    for d in os.environ.get("PATH", "").split(os.pathsep):
+        if d and os.path.realpath(d) != shim:
+            c = os.path.join(d, "docker")
+            if os.path.isfile(c) and os.access(c, os.X_OK):
+                return c
+    return None
+
+
+def other_engine_running():
+    """Names of running Rusty Hearts containers in the other engine ([] if none or not installed)."""
+    cmd = _other_engine_cmd()
+    if not cmd:
+        return []
+    try:
+        r = subprocess.run([cmd, "ps", "--filter", "name=rusty-hearts-offline-", "--format", "{{.Names}}"],
+                           capture_output=True, text=True, timeout=15)
+    except Exception:
+        return []
+    return [n for n in r.stdout.split() if n.startswith("rusty-hearts-offline-")] if r.returncode == 0 else []
+
+
+def stop_other_engine(progress=None):
+    names = other_engine_running()
+    if not names:
+        return f"The {OTHER_ENGINE} server is already off."
+    if progress:
+        progress(f"Stopping the {OTHER_ENGINE} server (your characters are saved)…")
+    r = subprocess.run([_other_engine_cmd(), "stop", "-t", "60"] + names, capture_output=True, text=True,
+                       timeout=180)
+    if r.returncode:
+        raise RuntimeError(f"Stopping the {OTHER_ENGINE} server failed: " + (r.stderr or r.stdout).strip()[-300:])
+    return f"{OTHER_ENGINE} server turned off."
+
+
 class ServerState:
     """Polls the stack every few seconds in a background thread."""
 
@@ -48,6 +93,7 @@ class ServerState:
         self.ports = {}            # name -> bool
         self.ready = False
         self.client = False
+        self.other = []            # RH containers running in the other engine (Docker vs Podman)
         self.docker_ok = True
         self.busy = None           # "Starting" / "Stopping" while a task runs
         self.checked = 0
@@ -80,10 +126,12 @@ class ServerState:
             running, docker_ok, data = [], False, {}
         ports = {name: port_open(p) for name, p in PORTS.items()}
         client = subprocess.run(["systemctl", "--user", "is-active", "--quiet", CLIENT_UNIT]).returncode == 0
+        other = other_engine_running()
         with self._lock:
             self.running, self.ports, self.docker_ok = running, ports, docker_ok
             self.ready = bool(data.get("ready")) and all(ports.values())
             self.client = client
+            self.other = other
             self.checked = time.time()
 
     def _loop(self):

@@ -477,6 +477,22 @@ class App:
                     if l.startswith("ERROR") and l.replace("ERROR: ", "") not in errs:
                         errs.append(l.replace("ERROR: ", ""))
                 err = "\n\n".join(errs[:3]) or None
+                if err and "already in use" in err and self.server.other:
+                    def stop_then_start():
+                        def done2(res, e):
+                            self.server.refresh_soon()
+                            if e:
+                                self.dialog("Couldn't turn it off", str(e))
+                                return
+                            self.toast(res, "ok")
+                            self.start_server(then=then)
+                        self.run_task(f"Turning off the {backend.OTHER_ENGINE} server", backend.stop_other_engine,
+                                      done2)
+                    self.dialog("Another server is running",
+                                f"The Rusty Hearts server is already running in {backend.OTHER_ENGINE} (started by "
+                                "another launcher copy or mode), so its ports are busy. Your characters are saved.",
+                                [("Close", None, "ghost"), (f"Turn it off & start", stop_then_start, "primary")])
+                    return
                 if err and "refused this folder's password" in err:
                     def fix():
                         def done2(res, e):

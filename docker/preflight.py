@@ -36,5 +36,5 @@ for port in (1433, 3000, 18070, 18080, 18090, 50001, 50004, 50006, 50016, 50091)
         try:
             s.bind(('127.0.0.1', port))
         except OSError:
-            raise SystemExit(f'Port {port} is already in use. Stop the previous stack before starting.')
+            raise SystemExit(f'ERROR: Port {port} is already in use. Is the server already running in another launcher folder, or in Docker/Podman? Turn that one off first.')
 print(f'Preflight passed: {available:.1f} GiB available. Runtime containers have hard memory and process limits.')

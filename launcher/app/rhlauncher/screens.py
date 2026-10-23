@@ -141,17 +141,32 @@ class ServerScreen(Screen):
     def restart(self):
         self.app.stop_server(then=lambda: self.app.start_server())
 
+    def stop_other(self):
+        app = self.app
+
+        def done(res, err):
+            app.server.refresh_soon()
+            if err:
+                app.dialog(f"Couldn't turn off the {backend.OTHER_ENGINE} server", str(err))
+            else:
+                app.log(res)
+                app.toast(res, "ok")
+        app.run_task(f"Turning off the {backend.OTHER_ENGINE} server", backend.stop_other_engine, done)
+
     def build(self):
         app, srv = self.app, self.app.server
         on = bool(srv.running or srv.ready)
         idle = srv.busy is None
-        ws = [ui.Button("srv_toggle", (X0, Y0, 300, 64), "Turn server off" if on else "Turn server on",
+        ws = [ui.Button("srv_toggle", (X0, Y0, 260, 64), "Turn server off" if on else "Turn server on",
                         app.toggle_server, "danger" if on else "success", size=21, enabled=idle),
-              ui.Button("srv_restart", (X0 + 316, Y0, 220, 64), "Restart", self.restart, "ghost",
+              ui.Button("srv_restart", (X0 + 276, Y0, 180, 64), "Restart", self.restart, "ghost",
                         enabled=idle and on),
-              ui.Button("srv_logs", (X0 + 552, Y0, 260, 64), "Open logs folder",
+              ui.Button("srv_logs", (X0 + 472, Y0, 220, 64), "Open logs folder",
                         lambda: integration.open_folder(LOG_DIR) or app.toast("No file manager found", "warn"),
                         "ghost")]
+        if srv.other:
+            ws.append(ui.Button("srv_other", (X0 + 708, Y0, CW - 708, 64), f"Turn off {backend.OTHER_ENGINE} server",
+                                self.stop_other, "danger", size=18, enabled=idle))
         items = list(reversed(app.activity)) or []
         self.log_i = min(self.log_i, max(0, len(items) - 1))
         ws.append(ui.ListView("srv_activity", (X0 + 470, Y0 + 96, CW - 470, CH - 104), items, self.log_i,
