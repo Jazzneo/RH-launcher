@@ -1,0 +1,85 @@
+name: rusty-hearts-offline
+services:
+  sql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    network_mode: host
+    environment:
+      ACCEPT_EULA: Y
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: ${RH_SQL_PASSWORD:?Run docker/prepare.py first}
+      MSSQL_IP_ADDRESS: 127.0.0.1
+      MSSQL_MEMORY_LIMIT_MB: 2048
+    volumes:
+      - sql-data:/var/opt/mssql
+    mem_limit: 3g
+    memswap_limit: 3g
+    cpus: 2
+    pids_limit: 1024
+    restart: 'no'
+    healthcheck:
+      test: ['CMD-SHELL', 'SQLCMDPASSWORD="$$MSSQL_SA_PASSWORD" /opt/mssql-tools18/bin/sqlcmd -S 127.0.0.1 -U sa -C -b -Q "SELECT 1" >/dev/null']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+  api:
+    build:
+      context: ..
+      dockerfile: docker/api.Dockerfile
+    network_mode: host
+    environment:
+      NODE_OPTIONS: --max-old-space-size=256
+      API_LISTEN_HOST: 127.0.0.1
+      API_LISTEN_PORT: 3000
+      API_LOCAL_LISTEN_HOST: 127.0.0.1
+      API_USA_PORT: 18070
+      API_JPN_PORT: 18080
+      API_PROXY_PORT: 18090
+      API_ENABLE_HELMET: 'false'
+      API_TRUSTPROXY_ENABLE: 'false'
+      DB_SERVER: 127.0.0.1
+      DB_DATABASE: RustyHearts_Account
+      DB_USER: sa
+      DB_PASSWORD: ${RH_SQL_PASSWORD}
+      DB_ENCRYPT: 'false'
+      GATESERVER_IP: 127.0.0.1
+      GATESERVER_PORT: 50001
+      SERVER_ID: 10101
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: 1025
+      LOG_AUTH_CONSOLE: 'true'
+      LOG_LEVEL: info
+      TZ: UTC
+    mem_limit: 512m
+    memswap_limit: 512m
+    cpus: 1
+    pids_limit: 128
+    restart: 'no'
+    depends_on:
+      sql:
+        condition: service_healthy
+  game:
+    build:
+      context: ..
+      dockerfile: docker/wine.Dockerfile
+    network_mode: host
+    environment:
+      RH_SQL_PASSWORD: ${RH_SQL_PASSWORD}
+      WINEPREFIX: /var/lib/rh-wine
+      WINEDEBUG: ${RH_WINEDEBUG:--all}
+    volumes:
+      - ../runtime/linux/server:/srv/game:Z
+      - ../runtime/linux/windows-dlls:/opt/rh-windows:ro,z
+      - ../runtime/linux/windows-components:/opt/rh-components:ro,z
+      - wine11-data:/var/lib/rh-wine
+    mem_limit: 8g
+    memswap_limit: 8g
+    cpus: 3
+    pids_limit: 1024
+    restart: 'no'
+    depends_on:
+      sql:
+        condition: service_healthy
+volumes:
+  sql-data:
+  wine11-data:

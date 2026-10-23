@@ -1,0 +1,14 @@
+# Never commit game/server files, secrets or personal data
+docker/.env
+runtime/
+logs/
+downloads/
+server-package/
+gameclient/
+vm/
+agent.MD
+*.vhdx
+*.7z
+__pycache__/
+*.pyc
+sources/RustyHearts-API-master/node_modules/
