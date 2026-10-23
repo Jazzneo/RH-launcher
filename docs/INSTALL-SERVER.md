@@ -101,7 +101,7 @@ include. This copies the 18 driver files (and three driver folders) out of the V
 disk **read-only**; nothing in it is changed, and it only needs the Python that comes with RH Launcher:
 
 ```bash
-launcher/runtime/python/bin/python3 tools/winvhdx.py drivers \
+launcher/runtime/python/bin/python3.12 tools/winvhdx.py drivers \
     "/path/to/RustyHearts WS/Virtual Hard Disks/RustyHearts WinServer 2022.vhdx" .
 ```
 
