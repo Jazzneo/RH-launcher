@@ -141,6 +141,20 @@ class ServerScreen(Screen):
     def restart(self):
         self.app.stop_server(then=lambda: self.app.start_server())
 
+    def mem_report(self):
+        app = self.app
+
+        def done(res, err):
+            if err:
+                app.dialog("Memory report failed", str(err))
+                return
+            summary, path = res
+            app.log("Memory report saved: logs/" + os.path.basename(path))
+            app.dialog("Memory report", summary + f"\n\nSaved as logs/{os.path.basename(path)}. Best taken while "
+                       "you're in a dungeon.", [("Open logs folder", lambda: integration.open_folder(LOG_DIR), "ghost"),
+                                               ("OK", None, "primary")], width=900)
+        app.run_task("Measuring memory", backend.memory_report, done)
+
     def stop_other(self):
         app = self.app
 
@@ -175,7 +189,9 @@ class ServerScreen(Screen):
                                 self.stop_other, "danger", size=18, enabled=idle))
         items = list(reversed(app.activity)) or []
         self.log_i = min(self.log_i, max(0, len(items) - 1))
-        ws.append(ui.ListView("srv_activity", (X0 + 470, Y0 + 96, CW - 470, CH - 104), items, self.log_i,
+        ws.append(ui.Button("srv_memory", (X0 + 470, Y0 + 96, CW - 470, 56), "Memory report", self.mem_report,
+                            "ghost", size=18, sub=None, enabled=idle))
+        ws.append(ui.ListView("srv_activity", (X0 + 470, Y0 + 196, CW - 470, CH - 204), items, self.log_i,
                               lambda i: setattr(self, "log_i", i), None, 34,
                               lambda s, r, it, sel, f: text(s, it, (r.x + 14, r.centery), 15,
                                                             C["text"] if sel else C["muted"], False, "midleft",
@@ -204,7 +220,7 @@ class ServerScreen(Screen):
             y += 58
         if srv.checked:
             text(surf, f"Checked {int(time.time() - srv.checked)}s ago", (box.x + 20, box.bottom - 30), 14, C["dim"])
-        text(surf, "Activity", (X0 + 470, Y0 + 76), 15, C["muted"], True)
+        text(surf, "Activity", (X0 + 470, Y0 + 172), 15, C["muted"], True)
 
 
 # ================================================================== DISPLAY

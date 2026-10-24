@@ -793,3 +793,80 @@ def open_firewall():
     if r.returncode:
         raise RuntimeError("Saved, but couldn't apply it right away: " + (r.stderr or r.stdout).strip()[-200:])
     return "Firewall ports opened."
+
+
+# ------------------------------------------------------------ memory report
+GAME_CONTAINER = "rusty-hearts-offline-game-1"
+
+
+def _mib(kb):
+    return f"{int(kb) / 1024:7.0f} MB"
+
+
+def memory_report(progress=None):
+    """Measure what each part of the server (and the game) uses right now. Returns (summary, report_path)."""
+    say = progress or (lambda m: None)
+    lines = [time.strftime("RH Launcher memory report  %Y-%m-%d %H:%M:%S"), ""]
+    say("Reading memory per container…")
+    try:
+        r = subprocess.run(_docker() + ["stats", "--no-stream", "--format",
+                                        "{{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}"],
+                           capture_output=True, text=True, timeout=60)
+        rows = [l.split("\t") for l in r.stdout.splitlines() if l.startswith("rusty-hearts-offline-")]
+    except Exception as e:
+        rows, r = [], None
+        lines.append(f"(container stats failed: {e})")
+    lines.append("== Containers (used / limit, CPU)")
+    for row in rows:
+        lines.append("  " + "  ".join(x.strip() for x in row))
+    if not rows:
+        lines.append("  (no Rusty Hearts containers running - turn the server on first)")
+    say("Reading the Windows server programs…")
+    progs = []
+    try:
+        r = subprocess.run(_docker() + ["exec", GAME_CONTAINER, "ps", "-eo", "rss=,args="], capture_output=True,
+                           text=True, timeout=60)
+        for line in r.stdout.splitlines():
+            parts = line.strip().split(None, 1)
+            if len(parts) != 2 or not parts[0].isdigit():
+                continue
+            rss, args = int(parts[0]), parts[1]
+            m = re.search(r"([A-Za-z0-9_ ]+_x64(?: \d)?\.exe|[A-Za-z0-9_-]+\.exe)", args)
+            name = m.group(1) if m else args.split()[0].rsplit("/", 1)[-1]
+            progs.append((rss, name))
+    except Exception as e:
+        lines.append(f"(process list failed: {e})")
+    agg = {}
+    for rss, name in progs:
+        agg[name] = agg.get(name, 0) + rss
+    lines += ["", "== Inside the game-server container (resident memory)"]
+    for name, rss in sorted(agg.items(), key=lambda x: -x[1]):
+        lines.append(f"  {_mib(rss)}  {name}")
+    total_progs = sum(agg.values())
+    lines.append(f"  {_mib(total_progs)}  TOTAL")
+    cm = subprocess.run(["systemctl", "--user", "show", CLIENT_UNIT, "-p", "MemoryCurrent", "--value"],
+                        capture_output=True, text=True).stdout.strip()
+    lines += ["", "== Game client (Proton)",
+              f"  {int(cm) / 1048576:7.0f} MB" if cm.isdigit() else "  not running"]
+    lines += ["", "== This PC"]
+    try:
+        with open("/proc/meminfo") as f:
+            mem = {l.split(":")[0]: l.split()[1] for l in f}
+        for k in ("MemTotal", "MemAvailable", "SwapTotal", "SwapFree"):
+            lines.append(f"  {k:13s}{_mib(mem.get(k, 0))}")
+    except OSError:
+        pass
+    p = MEM_PROFILES[memory_resolve(memory_choice())]
+    lines += ["", f"Server memory setting: {memory_choice()} -> {p['label']}"]
+    os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)
+    path = os.path.join(ROOT, "logs", time.strftime("memory-report-%Y%m%d-%H%M%S.txt"))
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+    top = sorted(agg.items(), key=lambda x: -x[1])[:4]
+    summary = ("Containers: " + ", ".join(f"{row[0].replace('rusty-hearts-offline-', '').rsplit('-', 1)[0]} "
+                                          f"{row[1].split('/')[0].strip()}" for row in rows) if rows else
+               "No server containers running.")
+    if top:
+        summary += "\n\nBiggest server programs: " + ", ".join(f"{n.replace('_Release', '').replace('_x64.exe', '')}"
+                                                              f" {v // 1024} MB" for n, v in top)
+    return summary, path
